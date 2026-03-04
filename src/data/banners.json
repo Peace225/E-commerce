@@ -1,0 +1,27 @@
+[
+    {
+      "title": "Offres Défiant les Prix",
+      "subtitle": "Des offres engagées pour le pouvoir d'achat.",
+      "product": "Voiture de luxe Toyota Camry",
+      "price": "429FCFA",
+      "discount": "-32% vs Amazon.fr",
+      "image": "/images/6.png"
+    },
+    {
+      "title": "Offres Défiantes",
+      "subtitle": "Vente Immobilier!",
+      "product": "Maison duplex a Abidjan",
+      "price": "169FCFA",
+      "discount": "-22%",
+      "image": "/images/4.jpg"
+    },
+    {
+      "title": "Offres Défiantes",
+      "subtitle": "Automobile a prix imbattable",
+      "product": "Moto Yamaha MT-07",
+      "price": "79FCFA",
+      "discount": "-30%",
+      "image": "/images/7.png"
+    }
+  ]
+  
