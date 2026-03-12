@@ -1,0 +1,341 @@
+import { useState, useEffect } from "react";
+import { Link } from "react-router-dom"; // 🚀 NOUVEAU : Import de Link pour le SEO
+import { Store, BadgeCheck, MapPin, Phone, ArrowRight, X, Clock, ChevronDown, ChevronUp } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+
+// 📦 Données des boutiques
+const boutiques = [
+  { 
+    nom: "Adidas", 
+    image: "/images/boutiques/adidas.jpg",
+    description: "Boutique Adidas officielle pour tous vos articles de sport et vêtements.",
+    localisation: "Abidjan, Côte d'Ivoire",
+    contact: "+225 01 23 45 67 89",
+    category: "Sport",
+    horaires: { debut: 9, fin: 19, texte: "09:00 - 19:00 (Lun-Sam)" }
+  },
+  { 
+    nom: "L'Oréal", 
+    image: "/images/boutiques/oreal.jpg",
+    description: "Produits de beauté et soins de la peau de qualité.",
+    localisation: "Abidjan, Côte d'Ivoire",
+    contact: "+225 01 23 45 67 88",
+    category: "Beauté",
+    horaires: { debut: 8, fin: 18, texte: "08:00 - 18:00 (Lun-Sam)" }
+  },
+  { 
+    nom: "Taurus", 
+    image: "/images/boutiques/toro.jpg",
+    description: "Équipements et accessoires de qualité pour la maison et le bureau.",
+    localisation: "Bouaké, Côte d'Ivoire",
+    contact: "+225 01 23 45 67 77",
+    category: "Maison",
+    horaires: { debut: 8, fin: 17, texte: "08:00 - 17:00 (Lun-Ven)" }
+  },
+  { 
+    nom: "Douxnid", 
+    image: "/images/boutiques/naturel.jpg",
+    description: "Produits naturels et bio pour votre santé et votre bien-être.",
+    localisation: "San Pedro, Côte d'Ivoire",
+    contact: "+225 01 23 45 67 66",
+    category: "Santé",
+    horaires: { debut: 9, fin: 20, texte: "09:00 - 20:00 (7j/7)" }
+  },
+  { 
+    nom: "DeFacto", 
+    image: "/images/boutiques/force.jpg",
+    description: "Mode tendance pour hommes et femmes à prix abordables.",
+    localisation: "Abidjan, Côte d'Ivoire",
+    contact: "+225 01 23 45 67 55",
+    category: "Mode",
+    horaires: { debut: 10, fin: 21, texte: "10:00 - 21:00 (7j/7)" }
+  },
+  { 
+    nom: "Nivea", 
+    image: "/images/boutiques/nivea.jpg",
+    description: "Produits de soins et cosmétiques pour toute la famille.",
+    localisation: "Yamoussoukro, Côte d'Ivoire",
+    contact: "+225 01 23 45 67 44",
+    category: "Beauté",
+    horaires: { debut: 8, fin: 18, texte: "08:00 - 18:00 (Lun-Sam)" }
+  },
+  { 
+    nom: "Xiaomi", 
+    image: "/images/boutiques/xiaomi.jpg",
+    description: "Smartphones, accessoires et gadgets technologiques.",
+    localisation: "Abidjan, Côte d'Ivoire",
+    contact: "+225 01 23 45 67 33",
+    category: "High Tech",
+    horaires: { debut: 9, fin: 19, texte: "09:00 - 19:00 (Lun-Sam)" }
+  },
+  { 
+    nom: "A3 Home", 
+    image: "/images/boutiques/a3.jpg",
+    description: "Articles pour la maison, décoration et confort.",
+    localisation: "Abidjan, Côte d'Ivoire",
+    contact: "+225 01 23 45 67 22",
+    category: "Maison",
+    horaires: { debut: 8, fin: 18, texte: "08:00 - 18:00 (Lun-Sam)" }
+  },
+  { 
+    nom: "Logitech", 
+    image: "/images/boutiques/logitech.jpg",
+    description: "Accessoires et périphériques informatiques de qualité.",
+    localisation: "Abidjan, Côte d'Ivoire",
+    contact: "+225 01 23 45 67 11",
+    category: "Informatique",
+    horaires: { debut: 8, fin: 17, texte: "08:00 - 17:00 (Lun-Ven)" }
+  },
+  { 
+    nom: "Groupe SEB", 
+    image: "/images/boutiques/seb.jpg",
+    description: "Électroménager et ustensiles de cuisine performants.",
+    localisation: "Bouaké, Côte d'Ivoire",
+    contact: "+225 01 23 45 67 10",
+    category: "Électroménager",
+    horaires: { debut: 9, fin: 18, texte: "09:00 - 18:00 (Lun-Sam)" }
+  },
+  { 
+    nom: "Siera", 
+    image: "/images/boutiques/siera.jpg",
+    description: "Produits de maison et décoration intérieure.",
+    localisation: "Abidjan, Côte d'Ivoire",
+    contact: "+225 01 23 45 67 09",
+    category: "Maison",
+    horaires: { debut: 8, fin: 18, texte: "08:00 - 18:00 (Lun-Sam)" }
+  }
+];
+
+export default function BoutiquesOfficielles() {
+  const [selected, setSelected] = useState(null);
+  const [heureActuelle, setHeureActuelle] = useState(new Date().getHours());
+  const [afficherTout, setAfficherTout] = useState(false);
+
+  const boutiquesAffichees = afficherTout ? boutiques : boutiques.slice(0, 6);
+
+  // 🚀 LOGIQUE : Actualisation de l'heure
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setHeureActuelle(new Date().getHours());
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // 🚀 CORRECTION BUG SCROLL : Gestion propre du overflow caché sur le body
+  useEffect(() => {
+    if (selected) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+
+    // Nettoyage si le composant est démonté
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [selected]);
+
+  const isOuvert = (debut, fin) => {
+    return heureActuelle >= debut && heureActuelle < fin;
+  };
+
+  return (
+    // 🚀 RESPONSIVE : p-4 sur mobile
+    <section className="bg-white rounded-[2rem] sm:rounded-[2.5rem] shadow-xl border border-gray-100 overflow-hidden my-8 sm:my-12 relative p-4 sm:p-6 md:p-8 transition-all duration-500">
+      
+      {/* 🔹 EN-TÊTE PREMIUM */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 sm:mb-10 gap-4">
+        <div className="flex items-center gap-3 sm:gap-4">
+          <div className="bg-blue-50 p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl shadow-inner border border-blue-100 relative shrink-0">
+            <Store className="text-blue-600 w-6 h-6 sm:w-7 sm:h-7" strokeWidth={2.5} />
+            <BadgeCheck className="text-blue-500 absolute -top-1.5 -right-1.5 bg-white rounded-full w-3 h-3 sm:w-4 sm:h-4" />
+          </div>
+          <div>
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-gray-900 tracking-tighter leading-none">
+              Boutiques <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-500">Officielles</span>
+            </h2>
+            <p className="text-[10px] md:text-xs text-gray-500 font-bold uppercase tracking-widest mt-1">
+              Les plus grandes marques en direct
+            </p>
+          </div>
+        </div>
+
+        {/* ⚡ BOUTON BASCULE */}
+        <button 
+          onClick={() => setAfficherTout(!afficherTout)}
+          className="group flex items-center justify-center gap-2 bg-gray-50 hover:bg-blue-50 px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl transition-colors duration-300 border border-gray-200 hover:border-blue-200 w-full md:w-auto"
+        >
+          <span className="text-[11px] sm:text-xs font-black text-gray-700 group-hover:text-blue-600 uppercase tracking-wider">
+            {afficherTout ? "Voir moins" : "Toutes les boutiques"}
+          </span>
+          {afficherTout ? (
+            <ChevronUp size={16} className="text-gray-400 group-hover:text-blue-600 transform group-hover:-translate-y-0.5 transition-all w-4 h-4" />
+          ) : (
+            <ChevronDown size={16} className="text-gray-400 group-hover:text-blue-600 transform group-hover:translate-y-0.5 transition-all w-4 h-4" />
+          )}
+        </button>
+      </div>
+
+      {/* 🔹 GRILLE DES MARQUES */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-5">
+        {boutiquesAffichees.map((b, index) => {
+          const statutOuvert = isOuvert(b.horaires.debut, b.horaires.fin);
+
+          return (
+            // 🚀 ACCESSIBILITÉ : div -> button pour la navigation au clavier
+            <button
+              key={index}
+              onClick={() => setSelected(b)}
+              aria-label={`Ouvrir les détails de la boutique ${b.nom}`}
+              className="group relative h-32 sm:h-40 w-full bg-gray-50 rounded-2xl sm:rounded-3xl overflow-hidden border border-gray-100 hover:border-blue-200 cursor-pointer transition-all duration-300 hover:shadow-[0_10px_30px_rgba(37,99,235,0.1)] hover:-translate-y-1 text-left"
+            >
+              {/* Badge Ouvert / Fermé */}
+              <div className="absolute top-2 left-2 sm:top-2.5 sm:left-2.5 z-10">
+                <div className={`px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full text-[7px] sm:text-[8px] font-black uppercase tracking-widest flex items-center gap-1 sm:gap-1.5 shadow-sm backdrop-blur-md ${statutOuvert ? 'bg-green-100/90 text-green-700 border border-green-200' : 'bg-red-100/90 text-red-700 border border-red-200'}`}>
+                  <span className={`w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full ${statutOuvert ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>
+                  {statutOuvert ? 'Ouvert' : 'Fermé'}
+                </div>
+              </div>
+
+              {/* Image/Logo de la marque */}
+              <div className="absolute inset-0 p-3 sm:p-4 pt-8 sm:pt-8">
+                <div className="w-full h-full bg-white rounded-xl sm:rounded-2xl flex items-center justify-center p-2 shadow-sm relative overflow-hidden">
+                  <img
+                    src={b.image}
+                    alt={b.nom}
+                    loading="lazy" // 🚀 SEO & PERF : Chargement différé
+                    className="max-w-full max-h-full object-contain transition-transform duration-500 group-hover:scale-110"
+                  />
+                  <BadgeCheck className="absolute top-1 right-1 sm:top-2 sm:right-2 text-blue-500 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 w-3 h-3 sm:w-4 sm:h-4" />
+                </div>
+              </div>
+
+              {/* Hover State : Nom & Catégorie */}
+              <div className="absolute inset-x-0 bottom-0 bg-white/95 backdrop-blur-md p-2 sm:p-3 translate-y-full group-hover:translate-y-0 transition-transform duration-300 border-t border-gray-100 hidden sm:block">
+                <h3 className="text-xs font-black text-gray-900 text-center truncate">{b.nom}</h3>
+                <p className="text-[9px] font-bold text-blue-600 text-center uppercase tracking-wider mt-0.5">{b.category}</p>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* 🔹 MODALE (POPUP) DÉTAILS DE LA BOUTIQUE */}
+      <AnimatePresence>
+        {selected && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelected(null)}
+              className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm"
+            ></motion.div>
+
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto sm:overflow-visible bg-white rounded-3xl sm:rounded-[2rem] shadow-2xl flex flex-col"
+            >
+              <button 
+                onClick={() => setSelected(null)}
+                className="absolute top-3 right-3 sm:top-4 sm:right-4 z-20 bg-black/20 hover:bg-black/40 text-white p-1.5 sm:p-2 rounded-full backdrop-blur-md transition-colors"
+                aria-label="Fermer la fenêtre"
+              >
+                <X size={18} className="sm:w-5 sm:h-5" />
+              </button>
+
+              <div className="h-32 sm:h-48 w-full bg-gray-100 relative p-4 sm:p-8 flex items-center justify-center shrink-0">
+                <img
+                  src={selected.image}
+                  alt={selected.nom}
+                  className="w-1/2 h-full object-contain relative z-10"
+                />
+                <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/90"></div>
+                <div className="absolute bottom-3 left-4 sm:bottom-4 sm:left-6 flex items-center gap-2 z-20">
+                  <h3 className="text-xl sm:text-3xl font-black text-white tracking-tight">{selected.nom}</h3>
+                  <BadgeCheck className="text-blue-400 bg-white rounded-full w-5 h-5 sm:w-6 sm:h-6" />
+                </div>
+              </div>
+
+              <div className="p-4 sm:p-6 md:p-8 bg-white flex flex-col">
+                <div className="flex flex-wrap items-center gap-2 mb-3 sm:mb-4">
+                  <span className="inline-block px-2.5 py-1 bg-blue-50 text-blue-600 text-[9px] sm:text-[10px] font-bold uppercase tracking-widest rounded-full">
+                    Boutique Officielle • {selected.category}
+                  </span>
+                  
+                  {isOuvert(selected.horaires.debut, selected.horaires.fin) ? (
+                    <span className="inline-block px-2.5 py-1 bg-green-50 text-green-600 text-[9px] sm:text-[10px] font-bold uppercase tracking-widest rounded-full flex items-center gap-1.5 border border-green-100">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span> Ouvert
+                    </span>
+                  ) : (
+                    <span className="inline-block px-2.5 py-1 bg-red-50 text-red-600 text-[9px] sm:text-[10px] font-bold uppercase tracking-widest rounded-full flex items-center gap-1.5 border border-red-100">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span> Fermé
+                    </span>
+                  )}
+                </div>
+                
+                <p className="text-gray-600 text-xs sm:text-sm leading-relaxed mb-4 sm:mb-6">
+                  {selected.description}
+                </p>
+
+                <div className="space-y-2 sm:space-y-2.5 bg-gray-50 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-gray-100">
+                  <div className="flex items-center gap-2.5 sm:gap-3 text-gray-700 bg-white p-2.5 sm:p-3 rounded-lg sm:rounded-xl shadow-sm">
+                    <div className="bg-gray-50 p-1.5 sm:p-2 rounded-lg border border-gray-100 shrink-0">
+                      <Clock size={14} className="text-blue-500 sm:w-4 sm:h-4" />
+                    </div>
+                    <div>
+                      <p className="text-[9px] sm:text-[10px] text-gray-400 font-bold uppercase tracking-wider">Horaires d'ouverture</p>
+                      <p className="text-[11px] sm:text-xs font-semibold">{selected.horaires.texte}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2.5 sm:gap-3 text-gray-700 bg-white p-2.5 sm:p-3 rounded-lg sm:rounded-xl shadow-sm">
+                    <div className="bg-gray-50 p-1.5 sm:p-2 rounded-lg border border-gray-100 shrink-0">
+                      <MapPin size={14} className="text-blue-500 sm:w-4 sm:h-4" />
+                    </div>
+                    <div>
+                      <p className="text-[9px] sm:text-[10px] text-gray-400 font-bold uppercase tracking-wider">Localisation</p>
+                      <p className="text-[11px] sm:text-xs font-semibold">{selected.localisation}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-2.5 sm:gap-3 text-gray-700 bg-white p-2.5 sm:p-3 rounded-lg sm:rounded-xl shadow-sm">
+                    <div className="bg-gray-50 p-1.5 sm:p-2 rounded-lg border border-gray-100 shrink-0">
+                      <Phone size={14} className="text-blue-500 sm:w-4 sm:h-4" />
+                    </div>
+                    <div>
+                      <p className="text-[9px] sm:text-[10px] text-gray-400 font-bold uppercase tracking-wider">Contact Direct</p>
+                      <p className="text-[11px] sm:text-xs font-semibold">{selected.contact}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 sm:mt-8 flex gap-2 sm:gap-3">
+                  <button 
+                    onClick={() => setSelected(null)}
+                    className="flex-1 py-3 sm:py-3.5 rounded-lg sm:rounded-xl font-bold text-[10px] sm:text-xs text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors"
+                  >
+                    Fermer
+                  </button>
+
+                  {/* 🚀 SEO : Remplacement du bouton navigate par un vrai <Link> */}
+                  <Link 
+                    to={`/boutique/${encodeURIComponent(selected.nom)}`}
+                    onClick={() => setSelected(null)} // On ferme la modale juste avant la redirection
+                    className="flex-[2] flex items-center justify-center gap-1.5 sm:gap-2 bg-blue-600 hover:bg-blue-700 text-white py-3 sm:py-3.5 rounded-lg sm:rounded-xl font-bold text-[10px] sm:text-xs uppercase tracking-widest transition-colors shadow-lg shadow-blue-500/30"
+                  >
+                    <span>Visiter <span className="hidden sm:inline">la boutique</span></span>
+                    <ArrowRight size={14} className="sm:w-4 sm:h-4" />
+                  </Link>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+    </section>
+  );
+}
