@@ -1,17 +1,11 @@
 const express = require('express');
-const router = express.Router(); // <--- CETTE LIGNE MANQUE OU EST MAL ÉCRITE
-const orderController = require('../controllers/orderController');
+const router = express.Router();
+const authController = require('../controllers/authController');
 
-// 🛒 CRÉATION
-router.post('/', orderController.createOrder);
+// 🔐 On utilise 'protect' (le douanier)
+const { protect } = require('../middlewares/authMiddleware'); 
 
-// 📜 HISTORIQUE
-router.get('/', orderController.getUserOrders);
+// 🔄 LA FAMEUSE ROUTE SYNC : C'est elle que React cherchait !
+router.post('/sync', protect, authController.registerOrLogin); 
 
-// 🔍 DÉTAIL
-router.get('/:id', orderController.getOrderDetail);
-
-// 📦 STATUT
-router.put('/:id/status', orderController.updateOrderStatus);
-
-module.exports = router; // <--- Maintenant 'router' est bien défini
+module.exports = router;

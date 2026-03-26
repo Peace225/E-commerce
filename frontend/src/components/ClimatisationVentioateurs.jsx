@@ -1,70 +1,38 @@
-import { useState } from "react"; 
-import { Link } from "react-router-dom"; // 🚀 NOUVEAU : Import de Link pour le SEO
+import { useState, useEffect } from "react"; 
+import { Link } from "react-router-dom";
 import { Snowflake, ArrowRight, Share2, TrendingUp, BadgeCheck } from "lucide-react";
-import CheckoutPopup from "../components/CheckoutPopup";
-
-export const climatiseurs = [
-  {
-    id: 1,
-    name: "Samsung Climatiseur Mural",
-    price: 479900,
-    oldPrice: 649900,
-    commissionRate: 0.1,
-    discount: "-26%",
-    img: "/images/clim/samsung.jpg" 
-  },
-  {
-    id: 2,
-    name: "Unio Climatiseur 12000 BTU",
-    price: 370000,
-    oldPrice: null,
-    commissionRate: 0.1,
-    discount: "",
-    img: "/images/clim/unio.jpg",
-  },
-  {
-    id: 3,
-    name: "Taurus AC 293 KT Mobile",
-    price: 369900,
-    oldPrice: 599900,
-    commissionRate: 0.12,
-    discount: "-38%",
-    img: "/images/clim/taurus.jpg",
-  },
-  {
-    id: 4,
-    name: "TCL Climatiseur Mural 9000 BTU",
-    price: 345500,
-    oldPrice: 429000,
-    commissionRate: 0.1,
-    discount: "-18%",
-    img: "/images/clim/tcl.jpg",
-  },
-  {
-    id: 5,
-    name: "Infinition Climatiseur Split",
-    price: 419000,
-    oldPrice: 499000,
-    commissionRate: 0.08,
-    discount: "-16%",
-    img: "/images/clim/infinition.jpg",
-  },
-  {
-    id: 6,
-    name: "LG Climatiseur DUALCOOL",
-    price: 499100,
-    oldPrice: 675000,
-    commissionRate: 0.15,
-    discount: "-26%",
-    img: "/images/clim/lg.jpg",
-  },
-];
+import { supabase } from "../utils/supabaseClient"; // 🔄 Import Supabase
+import CheckoutPopup from "./CheckoutPopup"; // Vérifie ton chemin
 
 export default function ClimatisationVentilateurs({ user }) {
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [selectedProduct, setSelectedProduct] = useState(null);
 
+  // 🔄 FETCH DEPUIS SUPABASE
+  useEffect(() => {
+    const fetchClimProducts = async () => {
+      setLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('produits')
+          .select('*')
+          .eq('type', 'clim') // 🚀 On filtre uniquement les produits taggés "clim"
+          .limit(6);
+
+        if (error) throw error;
+        setProducts(data);
+      } catch (err) {
+        console.error("Erreur Section Clim:", err.message);
+      }
+      setLoading(false);
+    };
+
+    fetchClimProducts();
+  }, []);
+
   const handleShare = (e, product) => {
-    e.preventDefault(); // 🚀 Empêche le déclenchement d'actions non voulues
+    e.preventDefault();
     e.stopPropagation();
     if (!user) {
       alert("⚠️ Connectez-vous pour partager et gagner votre commission !");
@@ -73,14 +41,14 @@ export default function ClimatisationVentilateurs({ user }) {
     setSelectedProduct(product);
   };
 
+  if (loading) return <div className="p-10 text-center font-bold text-blue-500 animate-pulse">Chargement de la gamme Air Frais...</div>;
+
   return (
-    // 🚀 RESPONSIVE : Marges et arrondis adaptés au mobile
     <section className="bg-white rounded-3xl sm:rounded-[2.5rem] shadow-xl border border-gray-100 overflow-hidden my-6 sm:my-12 relative w-full">
       
       {/* 🔹 EN-TÊTE PREMIUM */}
       <div className="bg-gradient-to-r from-slate-900 via-blue-900 to-cyan-900 p-5 sm:p-6 md:p-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-5 sm:gap-6 relative overflow-hidden">
         
-        {/* Motifs de fond (Inclinés comme Adidas) */}
         <div className="absolute top-0 right-0 h-full w-1/2 opacity-10 flex gap-2 sm:gap-4 -skew-x-12 translate-x-10 sm:translate-x-20 pointer-events-none">
           <div className="w-8 sm:w-12 h-full bg-cyan-300"></div>
           <div className="w-6 sm:w-8 h-full bg-cyan-200"></div>
@@ -104,7 +72,6 @@ export default function ClimatisationVentilateurs({ user }) {
           </div>
         </div>
 
-        {/* 🚀 SEO : Utilisation de Link et Responsive (w-full sur mobile) */}
         <Link 
           to="/climatisation"
           className="group relative z-10 flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 backdrop-blur-md px-5 py-2.5 sm:px-6 sm:py-3 rounded-xl transition-all duration-300 border border-white/10 w-full md:w-auto"
@@ -119,53 +86,47 @@ export default function ClimatisationVentilateurs({ user }) {
       {/* 🔹 GRILLE DE PRODUITS */}
       <div className="p-3 sm:p-4 md:p-8 bg-gray-50/50">
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4 md:gap-6">
-          {climatiseurs.map((item) => {
-             const commission = Math.round(item.price * item.commissionRate).toLocaleString();
-             
-             return (
-            // 🚀 SÉMANTIQUE : article pour un produit
+          {products.map((item) => (
             <article
               key={item.id}
               className="group bg-white rounded-2xl border border-gray-100 hover:border-blue-600 shadow-sm hover:shadow-xl transition-all duration-500 flex flex-col h-full overflow-hidden relative"
             >
-              {/* Badge réduction */}
               {item.discount && (
                 <div className="absolute top-2 left-2 sm:top-3 sm:left-3 z-20 bg-blue-600 text-white text-[9px] sm:text-[10px] font-black px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full shadow-lg transform -rotate-3 group-hover:rotate-0 transition-transform">
                   {item.discount}
                 </div>
               )}
 
-              {/* 🚀 SEO : Vrai lien sur l'image et le texte uniquement */}
-              <Link to={`/product-clim/${item.id}`} className="flex flex-col flex-1">
-                {/* Image Produit */}
+              {/* 🚀 SEO : Vrai lien sur l'image et le texte avec l'ID Supabase */}
+              <Link to={`/product/${item.id}`} className="flex flex-col flex-1">
                 <div className="relative aspect-square w-full bg-gray-50 flex items-center justify-center p-3 sm:p-4 overflow-hidden border-b border-gray-50">
                   <img 
                     src={item.img} 
-                    alt={`Acheter ${item.name}`} 
-                    loading="lazy" // 🚀 SEO & Perf
+                    alt={`Acheter ${item.nom}`} 
+                    loading="lazy"
                     className="max-h-full max-w-full object-contain transition-transform duration-700 group-hover:scale-110 drop-shadow-sm" 
+                    onError={(e) => { e.target.src = "https://placehold.co/400x400/eeeeee/999999?text=Image+Clim" }} // 🛠️ FALLBACK
                   />
                   <div className="absolute inset-0 bg-blue-500/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
                 </div>
 
-                {/* Infos Produit */}
                 <div className="p-3 sm:p-4 flex flex-col flex-1 bg-white">
                   <h3 className="text-[11px] sm:text-[12px] font-bold text-gray-800 line-clamp-2 group-hover:text-blue-700 transition-colors mb-2 sm:mb-3 min-h-[32px] sm:min-h-[36px]">
-                    {item.name}
+                    {item.nom}
                   </h3>
                   
                   <div className="mt-auto">
                     <div className="flex items-baseline gap-1">
                       <span className="text-sm sm:text-lg font-black text-gray-900 tracking-tight">
-                          {item.price.toLocaleString()}
+                          {item.prix?.toLocaleString('fr-FR')}
                       </span>
                       <span className="text-[9px] sm:text-[10px] font-bold text-gray-500 uppercase">FCFA</span>
                     </div>
                     
                     <div className="h-3 sm:h-4 mb-2 sm:mb-3 mt-0.5">
-                      {item.oldPrice && (
+                      {item.old_price && (
                           <span className="text-[9px] sm:text-[10px] line-through text-gray-400 font-bold">
-                              {item.oldPrice.toLocaleString()} F
+                              {item.old_price?.toLocaleString('fr-FR')} F
                           </span>
                       )}
                     </div>
@@ -173,14 +134,15 @@ export default function ClimatisationVentilateurs({ user }) {
                 </div>
               </Link>
 
-              {/* Zone d'actions (Partage & Commission) */}
               <div className="px-3 pb-3 sm:px-4 sm:pb-4 mt-auto bg-white">
                 <div className="bg-emerald-50 border border-emerald-100 rounded-lg sm:rounded-xl p-1.5 sm:p-2 flex items-center justify-between mb-3 sm:mb-4">
                   <div className="flex items-center gap-1 sm:gap-1.5">
                     <TrendingUp size={12} className="text-emerald-600 sm:w-3 sm:h-3" strokeWidth={3} />
                     <span className="text-[8px] sm:text-[9px] font-black text-emerald-800 uppercase tracking-wider">Gagnez</span>
                   </div>
-                  <span className="text-[10px] sm:text-[11px] font-black text-emerald-600">{commission} F</span>
+                  <span className="text-[10px] sm:text-[11px] font-black text-emerald-600">
+                    {item.commission?.toLocaleString('fr-FR')} F
+                  </span>
                 </div>
 
                 <button
@@ -193,16 +155,11 @@ export default function ClimatisationVentilateurs({ user }) {
                 </button>
               </div>
             </article>
-          )})}
+          ))}
         </div>
       </div>
 
-      {selectedProduct && (
-        <CheckoutPopup
-          product={selectedProduct}
-          onClose={() => setSelectedProduct(null)}
-        />
-      )}
+      {selectedProduct && <CheckoutPopup product={selectedProduct} onClose={() => setSelectedProduct(null)} />}
     </section>
   );
 }

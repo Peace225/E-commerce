@@ -1,6 +1,4 @@
 import { useEffect, useState } from "react";
-import { collection, query, where, getDocs, deleteDoc, doc } from "firebase/firestore";
-import { db } from "../utils/firebaseConfig";
 import { useAuth } from "../contexte/AuthContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { Trash2 } from "lucide-react";

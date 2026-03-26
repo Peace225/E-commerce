@@ -1,7 +1,6 @@
 // src/components/AdvancedKpi.jsx
 import { useEffect, useState } from "react";
-import { db } from "../utils/firebaseConfig";
-import { collection, getDocs } from "firebase/firestore";
+
 import { LineChart, Line, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
 
 export default function AdvancedKpi() {

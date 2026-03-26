@@ -17,9 +17,9 @@ const ProductModel = (data) => {
     commission: parseFloat(data.commission) || 0,
     status: data.status || "active",
     
-    // 🕒 Utilise la date fournie ou la date actuelle
-    createdAt: data.createdAt || new Date(),
-    updatedAt: new Date()
+    // 🕒 Conversion automatique en format texte (ISO) pour que PostgreSQL le lise sans planter
+    createdAt: data.createdAt ? new Date(data.createdAt).toISOString() : new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   };
 };
 

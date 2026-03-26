@@ -3,11 +3,8 @@ import * as Icons from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 // 🔥 IMPORTS FIREBASE
-import { db } from "../../utils/firebaseConfig";
-import { 
-  collection, addDoc, serverTimestamp, query, 
-  where, orderBy, onSnapshot, doc, updateDoc, increment 
-} from "firebase/firestore";
+
+
 
 export default function WalletPage({ wallet, user }) {
   // 🔹 ÉTATS

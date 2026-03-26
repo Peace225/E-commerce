@@ -1,46 +1,58 @@
-const admin = require('firebase-admin');
-const db = admin.firestore();
-const UserModel = require('../models/User');
+const { supabase } = require('../config/supabaseClient'); // 🔄 Import propre !
+// On n'importe pas forcément UserModel si on formate les données directement ici, 
+// mais tu peux le remettre si ton modèle nettoie des choses spécifiques.
 
 exports.registerOrLogin = async (req, res) => {
-  const { token, displayName, email, photoURL } = req.body;
-
-  if (!token) return res.status(400).json({ error: "Token manquant" });
-
   try {
-    // 1. Vérifier la validité du token avec Firebase Admin
-    const decodedToken = await admin.auth().verifyIdToken(token);
-    const uid = decodedToken.uid;
+    // 1. 🔐 On récupère les infos depuis le "douanier" (le middleware protect)
+    // Pas besoin de vérifier le token, s'il arrive ici c'est que le douanier l'a validé !
+    const uid = req.user.id;
+    const email = req.user.email;
+    
+    // On récupère d'éventuelles infos envoyées par React (comme le rôle choisi lors de l'inscription)
+    const { displayName, photoURL, role } = req.body; 
 
-    const userRef = db.collection('users').doc(uid);
-    const userDoc = await userRef.get();
+    // 2. 🔍 Vérifier si l'utilisateur existe déjà dans la table 'users'
+    const { data: existingUser, error: fetchError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', uid)
+      .maybeSingle(); 
 
-    // 2. Si l'utilisateur n'existe pas encore dans Firestore, on le crée
-    if (!userDoc.exists) {
-      // Générer un code de parrainage unique (ex: RYNEK-1234)
+    if (fetchError) throw fetchError;
+
+    // 3. 🆕 Si l'utilisateur n'existe pas encore, on le crée
+    if (!existingUser) {
+      // Générer un code de parrainage unique
       const referralCode = `RYNK-${Math.floor(1000 + Math.random() * 9000)}`;
 
-      const newUser = UserModel({
-        uid,
-        email: email || decodedToken.email,
+      const newUser = {
+        id: uid,
+        email: email,
         displayName: displayName || "Utilisateur Rynek",
         photoURL: photoURL || "",
-        role: "client", // Par défaut
+        role: role || "client", // 'vendeur' si ça vient du formulaire vendeur, sinon 'client'
         balance: 0,
-        referralCode: referralCode,
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
-      });
+        referralCode: referralCode
+      };
 
-      await userRef.set(newUser);
-      return res.status(201).json({ message: "Utilisateur créé avec succès", user: newUser });
+      // 💾 On insère le nouvel utilisateur dans la table
+      const { data: insertedUser, error: insertError } = await supabase
+        .from('users')
+        .insert([newUser]) 
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+
+      return res.status(201).json({ message: "Utilisateur créé avec succès", user: insertedUser });
     }
 
-    // 3. Si l'utilisateur existe déjà, on renvoie ses données (Login)
-    res.status(200).json({ message: "Connexion réussie", user: userDoc.data() });
+    // 4. ✅ Si l'utilisateur existe déjà, on renvoie ses données (Login)
+    res.status(200).json({ message: "Connexion réussie", user: existingUser });
 
   } catch (error) {
     console.error("Erreur Auth:", error.message);
-    res.status(401).json({ error: "Token invalide ou erreur serveur" });
+    res.status(500).json({ error: "Erreur serveur lors de la synchronisation" });
   }
 };
-module.exports = router;

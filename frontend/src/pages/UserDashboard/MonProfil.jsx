@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { useAuth } from "../../contexte/AuthContext";
-import { updateProfile } from "firebase/auth";
-import { auth } from "../../utils/firebaseConfig";
+import { supabase } from "../../utils/supabaseClient"; // 🔄 Import Supabase
 import { motion } from "framer-motion";
 import * as Icons from "lucide-react";
 
 export default function MonProfil() {
   const { user } = useAuth();
-  const [displayName, setDisplayName] = useState(user?.displayName || "");
+  // Supabase stocke souvent le nom dans user_metadata
+  const [displayName, setDisplayName] = useState(user?.user_metadata?.display_name || user?.display_name || "");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: "", text: "" });
 
@@ -17,14 +17,24 @@ export default function MonProfil() {
     setMessage({ type: "", text: "" });
 
     try {
-      // Mise à jour du profil dans Firebase Auth
-      await updateProfile(auth.currentUser, {
-        displayName: displayName,
+      // 1️⃣ Mise à jour des métadonnées d'Authentification (pour la session actuelle)
+      const { error: authError } = await supabase.auth.updateUser({
+        data: { display_name: displayName }
       });
-      setMessage({ type: "success", text: "Profil mis à jour avec succès !" });
+      if (authError) throw authError;
+
+      // 2️⃣ Mise à jour dans ta table 'users' (pour la base de données)
+      const { error: dbError } = await supabase
+        .from('users')
+        .update({ display_name: displayName }) // Assure-toi que la colonne s'appelle ainsi
+        .eq('id', user.id); // ⚠️ Utilise .id et non .uid
+
+      if (dbError) throw dbError;
+
+      setMessage({ type: "success", text: "Profil Rynek mis à jour avec succès !" });
     } catch (error) {
-      console.error(error);
-      setMessage({ type: "error", text: "Erreur lors de la mise à jour." });
+      console.error("Erreur de mise à jour:", error.message);
+      setMessage({ type: "error", text: "Erreur lors de la synchronisation du profil." });
     } finally {
       setLoading(false);
     }
@@ -34,7 +44,7 @@ export default function MonProfil() {
     <div className="max-w-2xl">
       <div className="mb-10">
         <h2 className="text-3xl font-black uppercase italic tracking-tighter">Mon Profil</h2>
-        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Gérez vos informations personnelles</p>
+        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">Gérez vos informations personnelles</p>
       </div>
 
       <motion.div 
@@ -45,11 +55,12 @@ export default function MonProfil() {
           
           {/* Section Avatar / Statut */}
           <div className="flex items-center gap-6 mb-10 p-4 bg-gray-50 rounded-3xl">
-            <div className="w-16 h-16 bg-orange-600 rounded-2xl flex items-center justify-center text-white text-2xl font-black shadow-lg shadow-orange-600/20">
+            {/* On utilise la couleur primaire dynamique pour l'avatar ! */}
+            <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center text-theme-text text-2xl font-black shadow-lg transition-colors duration-500">
               {displayName.charAt(0).toUpperCase() || "U"}
             </div>
             <div>
-              <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest">Statut du compte</p>
+              <p className="text-[10px] font-black text-primary uppercase tracking-widest transition-colors duration-500">Statut du compte</p>
               <p className="text-sm font-black uppercase text-gray-900">Client Certifié Rynek</p>
             </div>
           </div>
@@ -63,13 +74,13 @@ export default function MonProfil() {
                 type="text" 
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                className="w-full bg-gray-50 border-none rounded-2xl p-4 pl-12 text-sm font-bold focus:ring-2 focus:ring-orange-500 outline-none transition-all"
+                className="w-full bg-gray-50 border-none rounded-2xl p-4 pl-12 text-sm font-bold focus:ring-2 focus:ring-primary outline-none transition-all"
                 placeholder="Votre nom"
               />
             </div>
           </div>
 
-          {/* Champ Email (Lecture seule pour sécurité) */}
+          {/* Champ Email (Lecture seule) */}
           <div className="flex flex-col gap-2">
             <label className="text-[10px] font-black uppercase text-gray-400 ml-2">Adresse Email (Non modifiable)</label>
             <div className="relative opacity-60">
@@ -83,17 +94,19 @@ export default function MonProfil() {
             </div>
           </div>
 
-          {/* Feedback Message */}
-          {message.text && (
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
-              className={`p-4 rounded-2xl text-center text-[10px] font-black uppercase tracking-widest ${
-                message.type === "success" ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"
-              }`}
-            >
-              {message.text}
-            </motion.div>
-          )}
+          {/* Message de Feedback */}
+          <AnimatePresence>
+            {message.text && (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+                className={`p-4 rounded-2xl text-center text-[10px] font-black uppercase tracking-widest ${
+                  message.type === "success" ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"
+                }`}
+              >
+                {message.text}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Bouton Sauvegarder */}
           <button 
@@ -110,7 +123,7 @@ export default function MonProfil() {
       <div className="mt-8 p-6 bg-blue-50/50 rounded-[2rem] border border-blue-100 flex items-start gap-4">
         <Icons.ShieldCheck className="text-blue-600 shrink-0" size={20} />
         <p className="text-[10px] font-bold text-blue-600/70 leading-relaxed uppercase">
-          Pour modifier votre adresse email ou votre mot de passe, veuillez contacter le support <span className="text-blue-700 font-black">Rynek Force</span> pour des raisons de sécurité liées à vos transactions.
+          Pour modifier votre adresse email ou votre mot de passe, veuillez contacter le support <span className="text-blue-700 font-black">Rynek Force</span>.
         </p>
       </div>
     </div>

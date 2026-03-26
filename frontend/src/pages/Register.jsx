@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
-import { createUserWithEmailAndPassword, updateProfile, sendEmailVerification } from "firebase/auth"; 
-import { auth } from "../utils/firebaseConfig"; // On retire 'db' pour passer par l'API
+import { supabase } from "../utils/supabaseClient"; // 🔄 Bye Firebase, Bonjour Supabase !
 import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 import AlertMessage from "../components/AlertMessage";
@@ -31,9 +30,9 @@ export default function Register() {
   }, [searchParams]);
 
   // 🔄 SYNCHRONISATION AVEC LE BACKEND RYNEK
-  const syncWithBackend = async (firebaseUser, additionalData) => {
+  const syncWithBackend = async (session, additionalData) => {
     try {
-      const token = await firebaseUser.getIdToken();
+      const token = session.access_token; // 🔑 JWT Supabase
 
       const response = await fetch('http://localhost:5000/api/auth/sync', {
         method: 'POST',
@@ -47,12 +46,12 @@ export default function Register() {
       const result = await response.json();
 
       if (response.ok) {
-        setAlert(`🎉 Compte créé ! Un email d'activation a été envoyé.`);
+        setAlert(`🎉 Compte créé avec succès ! Bienvenue.`);
         setTimeout(() => {
           navigate(accountType === "vendeur" ? "/dashboard" : "/mon-compte");
-        }, 3000);
+        }, 2000);
       } else {
-        setAlert(result.error || "Erreur de synchronisation.");
+        setAlert(result.error || "Erreur de synchronisation avec le serveur.");
       }
     } catch (error) {
       console.error("Erreur Backend:", error);
@@ -66,11 +65,7 @@ export default function Register() {
     setAlert("");
 
     try {
-      // 1. Création dans Firebase Auth
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-
-      // 2. Préparation des données spécifiques au rôle
+      // 1. Préparation des données spécifiques au rôle
       const displayNameFinal = accountType === "client" ? `${prenom} ${nom}` : nomBoutique;
       
       const payload = {
@@ -84,18 +79,36 @@ export default function Register() {
         )
       };
 
-      // 3. Mise à jour du profil Firebase (pour l'affichage immédiat)
-      await updateProfile(user, { displayName: displayNameFinal });
+      // 2. Création dans Supabase Auth (avec les métadonnées)
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: payload // 🚀 On stocke directement tout ça dans user_metadata !
+        }
+      });
 
-      // 4. Délégation de l'inscription à l'API (Gestion Wallet, Referral, Firestore)
-      await syncWithBackend(user, payload);
+      if (error) throw error;
 
-      // 5. Envoi email de vérification
-      await sendEmailVerification(user);
+      // 3. Gestion de la suite selon la configuration Supabase
+      if (data.session) {
+        // Si la confirmation par email est DÉSACTIVÉE (Recommandé pour tes tests)
+        // L'utilisateur est connecté direct, on synchronise avec ton backend
+        await syncWithBackend(data.session, payload);
+      } else {
+        // Si la confirmation par email est ACTIVÉE
+        // Pas de session immédiate, l'utilisateur doit aller cliquer dans son mail
+        setAlert("🎉 Compte créé ! Un email d'activation vous a été envoyé. Veuillez vérifier votre boîte de réception.");
+        setTimeout(() => {
+          navigate("/login");
+        }, 4000);
+      }
 
     } catch (error) {
-      console.error("Erreur Inscription:", error.message);
-      setAlert("❌ " + (error.code === 'auth/email-already-in-use' ? "Cet email est déjà utilisé." : error.message));
+      console.error("Erreur Inscription Supabase:", error.message);
+      // Supabase renvoie un message spécifique si l'email existe déjà
+      const isAlreadyUsed = error.message.includes("already registered") || error.message.includes("already exists");
+      setAlert("❌ " + (isAlreadyUsed ? "Cet email est déjà utilisé." : "Une erreur est survenue lors de l'inscription."));
     } finally {
       setLoading(false);
     }

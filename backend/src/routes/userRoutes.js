@@ -1,14 +1,17 @@
 const express = require('express');
 const router = express.Router();
-const userController = require('../controllers/userController');
-const verifyToken = require('../middlewares/authMiddleware');
+const authController = require('../controllers/authController');
 
-// 🟢 RÉCUPÉRER LE PROFIL (Public)
-// URL: GET http://localhost:5000/api/users/:uid
-router.get('/:uid', userController.getUserProfile);
+// 🔐 On utilise 'protect' comme dans tes autres fichiers
+const { protect } = require('../middlewares/authMiddleware'); 
 
-// 🔴 DEMANDER UN RETRAIT (Privé - nécessite d'être connecté)
-// URL: POST http://localhost:5000/api/users/withdraw
-router.post('/withdraw', verifyToken, userController.requestWithdrawal);
+/**
+ * 🔄 SYNCHRONISATION / LOGIN
+ * URL: POST http://localhost:5000/api/auth/sync
+ */
+router.post('/sync', protect, authController.registerOrLogin); 
+
+// 💡 Si tu avais une ligne avec 'orderController' ici, 
+// supprime-la ! Les commandes doivent rester dans orderRoutes.js.
 
 module.exports = router;

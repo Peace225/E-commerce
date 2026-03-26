@@ -1,71 +1,39 @@
-import { useState } from "react";
-import { Link } from "react-router-dom"; // 🚀 NOUVEAU : Import de Link pour le SEO
+import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { Share2, BadgeCheck, ArrowRight, TrendingUp } from "lucide-react";
-import CheckoutPopup from "../components/CheckoutPopup";
-
-// 🔹 Ajout d'ID pour chaque produit
-export const produitsAdidas = [
-  {
-    id: 1,
-    name: "Adidas Claquette Eezay",
-    price: "119.00 Euro",
-    oldPrice: "300.00 Euro",
-    commission: "1000 FCFA",
-    discount: "-60%",
-    img: "/images/adidas/claquette.jpg",
-  },
-  {
-    id: 2,
-    name: "Adidas Chaussure Litecourt",
-    price: "495.00 Euro",
-    oldPrice: "810.00 Euro",
-    commission: "1000 FCFA",
-    discount: "-39%",
-    img: "/images/adidas/Litecourt.jpg",
-  },
-  {
-    id: 3,
-    name: "Adidas Chaussure Lite Rose",
-    price: "385.00 Euro",
-    oldPrice: "630.00 Euro",
-    commission: "1000 FCFA",
-    discount: "-39%",
-    img: "/images/adidas/lite-rose.jpg",
-  },
-  {
-    id: 4,
-    name: "Adidas Chaussure Tensas",
-    price: "329.00 Euro",
-    oldPrice: "540.00 Euro",
-    commission: "1000 FCFA",
-    discount: "-39%",
-    img: "/images/adidas/tensas.jpg",
-  },
-  {
-    id: 5,
-    name: "Adidas Chaussure Response",
-    price: "635.00 Euro",
-    oldPrice: "1,040.00 Euro",
-    commission: "1000 FCFA",
-    discount: "-39%",
-    img: "/images/adidas/response.jpg",
-  },
-  {
-    id: 6,
-    name: "Adidas Chaussure Zero",
-    price: "459.00 Euro",
-    oldPrice: "860.00 Euro",
-    commission: "1000 FCFA",
-    discount: "-47%",
-    img: "/images/adidas/zero.jpg",
-  },
-];
+import { supabase } from "../utils/supabaseClient"; 
+import CheckoutPopup from "./CheckoutPopup";
 
 export default function AdidasBoutique({ user }) {
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [selectedProduct, setSelectedProduct] = useState(null);
 
+  // 🔄 FETCH DES DONNÉES DEPUIS SUPABASE (AVEC LE BON FILTRE)
+  useEffect(() => {
+    const fetchAdidasProducts = async () => {
+      setLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('produits')
+          .select('*')
+          .eq('marque', 'Adidas')
+          .eq('type', 'boutique') // 🚀 LE FILTRE MAGIQUE : Ignore les faux produits de test
+          .limit(6);
+
+        if (error) throw error;
+        setProducts(data);
+      } catch (err) {
+        console.error("Erreur Boutique Adidas:", err.message);
+      }
+      setLoading(false);
+    };
+
+    fetchAdidasProducts();
+  }, []);
+
   const handleShare = (e, product) => {
-    e.preventDefault(); // 🚀 Empêche le déclenchement du lien parent
+    e.preventDefault();
     e.stopPropagation(); 
     if (!user) {
       alert("⚠️ Connectez-vous pour partager et gagner votre commission !");
@@ -74,14 +42,14 @@ export default function AdidasBoutique({ user }) {
     setSelectedProduct(product);
   };
 
+  if (loading) return <div className="p-10 text-center font-bold text-gray-500 animate-pulse">Chargement de la boutique Adidas...</div>;
+
   return (
-    // 🚀 RESPONSIVE : Marges et arrondis adaptés au mobile
     <section className="bg-white rounded-3xl sm:rounded-[2.5rem] shadow-xl border border-gray-100 overflow-hidden my-8 sm:my-12 relative">
       
       {/* 🔹 EN-TÊTE MARQUE PREMIUM (Thème Adidas) */}
       <div className="bg-gradient-to-r from-gray-900 via-gray-800 to-black p-5 sm:p-6 md:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-5 sm:gap-6 relative overflow-hidden">
         
-        {/* Motifs de fond (les 3 bandes Adidas) */}
         <div className="absolute top-0 right-0 h-full w-1/2 opacity-10 flex gap-2 sm:gap-4 -skew-x-12 translate-x-10 sm:translate-x-20 pointer-events-none">
           <div className="w-8 sm:w-12 h-full bg-white"></div>
           <div className="w-8 sm:w-12 h-full bg-white"></div>
@@ -106,7 +74,6 @@ export default function AdidasBoutique({ user }) {
           </div>
         </div>
 
-        {/* 🚀 SEO : Utilisation de Link au lieu du bouton avec onClick */}
         <Link 
           to="/boutique/Adidas"
           className="group relative z-10 flex items-center justify-center gap-2 w-full md:w-auto bg-white/10 hover:bg-white/20 backdrop-blur-md px-5 py-2.5 sm:px-6 sm:py-3 rounded-xl transition-all duration-300 border border-white/10"
@@ -121,8 +88,7 @@ export default function AdidasBoutique({ user }) {
       {/* 🔹 GRILLE DE PRODUITS ADIDAS */}
       <div className="p-3 sm:p-6 md:p-8 bg-gray-50/50">
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-5">
-          {produitsAdidas.map((item) => (
-            // 🚀 SÉMANTIQUE : article pour un produit
+          {products.map((item) => (
             <article
               key={item.id}
               className="group bg-white rounded-2xl border border-gray-100 hover:border-gray-900 shadow-sm hover:shadow-xl transition-all duration-500 flex flex-col h-full overflow-hidden relative"
@@ -133,42 +99,45 @@ export default function AdidasBoutique({ user }) {
                 </div>
               )}
 
-              {/* 🚀 SEO : Lien global sur l'image et le titre */}
-              <Link to={`/product-adidas/${item.id}`} className="flex flex-col flex-1">
+              <Link to={`/product/${item.id}`} className="flex flex-col flex-1">
                 <div className="relative aspect-square w-full bg-gray-50 flex items-center justify-center p-3 sm:p-4 overflow-hidden">
                   <img 
                     src={item.img} 
-                    alt={`Acheter ${item.name}`} 
+                    alt={`Acheter ${item.nom}`} 
                     loading="lazy"
                     className="max-h-full max-w-full object-contain transition-transform duration-700 group-hover:scale-110 drop-shadow-md" 
+                    onError={(e) => { e.target.src = "https://placehold.co/400x400/eeeeee/999999?text=Image+Indisponible" }} 
                   />
                   <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
                 </div>
 
                 <div className="p-3 sm:p-4 flex flex-col flex-1 bg-white">
                   <h3 className="text-[11px] sm:text-[12px] font-bold text-gray-800 line-clamp-2 group-hover:text-black transition-colors mb-2 min-h-[32px] sm:min-h-[36px]">
-                    {item.name}
+                    {item.nom}
                   </h3>
                   
                   <div className="mt-auto">
                     <div className="flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-2 mb-2 sm:mb-3">
-                      <span className="text-sm sm:text-lg font-black text-gray-900 tracking-tight leading-none">{item.price}</span>
-                      {item.oldPrice && (
-                        <span className="text-[9px] sm:text-[10px] line-through text-gray-400 font-bold">{item.oldPrice}</span>
+                      <span className="text-sm sm:text-lg font-black text-gray-900 tracking-tight leading-none">
+                        {item.prix?.toLocaleString('fr-FR')} FCFA
+                      </span>
+                      {item.old_price && (
+                        <span className="text-[9px] sm:text-[10px] line-through text-gray-400 font-bold">
+                          {item.old_price?.toLocaleString('fr-FR')} FCFA
+                        </span>
                       )}
                     </div>
                   </div>
                 </div>
               </Link>
 
-              {/* Boutons d'action en bas de carte */}
               <div className="px-3 pb-3 sm:px-4 sm:pb-4 mt-auto bg-white">
                 <div className="bg-green-50 border border-green-100 rounded-lg sm:rounded-xl p-1.5 sm:p-2 flex items-center justify-between mb-3 sm:mb-4">
                   <div className="flex items-center gap-1 sm:gap-1.5">
                     <TrendingUp size={12} className="text-green-600 sm:w-3 sm:h-3" strokeWidth={3} />
                     <span className="text-[8px] sm:text-[9px] font-black text-green-800 uppercase tracking-wider">Com.</span>
                   </div>
-                  <span className="text-[10px] sm:text-[11px] font-black text-green-600">{item.commission}</span>
+                  <span className="text-[10px] sm:text-[11px] font-black text-green-600">{item.commission} FCFA</span>
                 </div>
 
                 <button
@@ -185,12 +154,7 @@ export default function AdidasBoutique({ user }) {
         </div>
       </div>
 
-      {selectedProduct && (
-        <CheckoutPopup
-          product={selectedProduct}
-          onClose={() => setSelectedProduct(null)}
-        />
-      )}
+      {selectedProduct && <CheckoutPopup product={selectedProduct} onClose={() => setSelectedProduct(null)} />}
     </section>
   );
 }

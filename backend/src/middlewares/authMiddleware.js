@@ -1,19 +1,30 @@
-const admin = require('firebase-admin');
+// 3. 🆕 Si l'utilisateur n'existe pas encore, on le crée
+    if (!existingUser) {
+      
+      // 🚨 TEST EXPRESS : On n'envoie que l'ID et l'Email pour voir si ça passe !
+      const newUser = {
+        id: uid,
+        email: email
+        // J'ai désactivé tout le reste temporairement :
+        // displayName: displayName || "Utilisateur Rynek",
+        // photoURL: photoURL || "",
+        // role: role || "client",
+        // balance: 0,
+        // referralCode: referralCode
+      };
 
-const verifyToken = async (req, res, next) => {
-  const idToken = req.headers.authorization?.split('Bearer ')[1];
+      // 💾 On insère le nouvel utilisateur dans la table
+      const { data: insertedUser, error: insertError } = await supabase
+        .from('users')
+        .insert([newUser]) 
+        .select()
+        .single();
 
-  if (!idToken) {
-    return res.status(401).json({ error: "Accès refusé. Token manquant." });
-  }
+      if (insertError) {
+         // 👉 C'EST ÇA QU'ON VEUT VOIR DANS LE TERMINAL SI ÇA PLANTE !
+         console.error("🚨 ERREUR SUPABASE INSERTION:", insertError);
+         throw insertError;
+      }
 
-  try {
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
-    req.user = decodedToken; // On attache l'utilisateur à la requête
-    next();
-  } catch (error) {
-    res.status(401).json({ error: "Session expirée ou Token invalide." });
-  }
-};
-
-module.exports = verifyToken;
+      return res.status(201).json({ message: "Utilisateur créé avec succès", user: insertedUser });
+    }

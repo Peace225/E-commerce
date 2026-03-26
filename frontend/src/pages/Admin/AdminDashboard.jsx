@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
-import { db } from "../../utils/firebaseConfig";
-import { collection, query, onSnapshot, where } from "firebase/firestore";
 import { useAuth } from "../../contexte/AuthContext";
 import * as Icons from "lucide-react";
 import AdminProduits from "./AdminProduits";

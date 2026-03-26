@@ -1,6 +1,4 @@
 import { useEffect, useState } from "react";
-import { db } from "../utils/firebaseConfig";
-import { collection, query, where, getDocs, addDoc, serverTimestamp } from "firebase/firestore";
 import * as Icons from "lucide-react";
 import { motion } from "framer-motion";
 

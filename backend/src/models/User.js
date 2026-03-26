@@ -1,6 +1,6 @@
 const UserModel = (data) => {
   return {
-    uid: data.uid,
+    id: data.id || data.uid, // 🔄 On passe à 'id' pour Supabase (on garde uid en secours au cas où)
     email: data.email,
     displayName: data.displayName || "",
     role: data.role || "client", // client, vendeur, admin

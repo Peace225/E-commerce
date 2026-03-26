@@ -1,7 +1,5 @@
 import { useState } from "react";
 import { useAuth } from "../contexte/AuthContext";
-import { db } from "../utils/firebaseConfig";
-import { doc, updateDoc } from "firebase/firestore";
 import * as Icons from "lucide-react";
 import { motion } from "framer-motion";
 

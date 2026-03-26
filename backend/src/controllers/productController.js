@@ -1,7 +1,4 @@
-// 💡 On importe 'db' et 'admin' depuis ton fichier de configuration principal
-// ou directement depuis l'initialisation pour éviter les doublons.
-const admin = require('firebase-admin');
-const db = admin.firestore();
+const { supabase } = require('../config/supabaseClient');
 const ProductModel = require('../models/Product');
 
 /**
@@ -9,18 +6,12 @@ const ProductModel = require('../models/Product');
  */
 exports.getAllProducts = async (req, res) => {
   try {
-    const snapshot = await db.collection('products')
-      .orderBy('createdAt', 'desc')
-      .get();
+    const { data: products, error } = await supabase
+      .from('products')
+      .select('*')
+      .order('createdAt', { ascending: false });
 
-    // On transforme les données Firestore en un tableau JSON propre
-    const products = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      // 💡 Petit fix : Conversion des Timestamps Firebase en format ISO pour le frontend
-      createdAt: doc.data().createdAt?.toDate() || null 
-    }));
-
+    if (error) throw error;
     res.status(200).json(products);
   } catch (error) {
     console.error("Erreur getAllProducts:", error.message);
@@ -33,13 +24,17 @@ exports.getAllProducts = async (req, res) => {
  */
 exports.getOneProduct = async (req, res) => {
   try {
-    const doc = await db.collection('products').doc(req.params.id).get();
-    
-    if (!doc.exists) {
+    const { data: product, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+
+    if (error || !product) {
       return res.status(404).json({ message: "Produit non trouvé." });
     }
 
-    res.status(200).json({ id: doc.id, ...doc.data() });
+    res.status(200).json(product);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -50,27 +45,29 @@ exports.getOneProduct = async (req, res) => {
  */
 exports.createProduct = async (req, res) => {
   try {
-    // 1. Validation/Nettoyage via le modèle
-    // On s'assure que les types sont corrects (nombres, dates)
-    const rawData = {
+    // 🛡️ Sécurité : On force le sellerId avec l'ID de l'utilisateur connecté (via protect)
+    const productData = {
       ...req.body,
-      createdAt: admin.firestore.FieldValue.serverTimestamp()
+      sellerId: req.user.id 
     };
-    
-    const validatedData = ProductModel(rawData);
 
-    // 2. Sécurité : Empêcher les prix invalides
+    const validatedData = ProductModel(productData);
+
     if (validatedData.price <= 0) {
-      return res.status(400).json({ error: "Le prix doit être un nombre positif." });
+      return res.status(400).json({ error: "Le prix doit être positif." });
     }
 
-    // 3. Ajout à Firestore
-    const docRef = await db.collection('products').add(validatedData);
+    const { data: newProduct, error } = await supabase
+      .from('products')
+      .insert([validatedData])
+      .select()
+      .single();
+
+    if (error) throw error;
 
     res.status(201).json({ 
-      id: docRef.id, 
-      message: "Produit ajouté avec succès !",
-      product: validatedData 
+      message: "Produit ajouté !",
+      product: newProduct 
     });
   } catch (error) {
     console.error("Erreur création produit:", error);
@@ -83,24 +80,33 @@ exports.createProduct = async (req, res) => {
  */
 exports.updateProduct = async (req, res) => {
   try {
-    const productRef = db.collection('products').doc(req.params.id);
-    const doc = await productRef.get();
+    const productId = req.params.id;
+    const userId = req.user.id; // L'utilisateur qui fait la demande
 
-    if (!doc.exists) {
-      return res.status(404).json({ message: "Produit introuvable." });
+    // 1. On vérifie d'abord si le produit appartient bien à cet utilisateur
+    const { data: product } = await supabase
+      .from('products')
+      .select('sellerId')
+      .eq('id', productId)
+      .single();
+
+    if (!product || product.sellerId !== userId) {
+      return res.status(403).json({ error: "Action interdite : ce n'est pas votre produit." });
     }
 
-    // On prépare les données de mise à jour
-    const updateData = {
-      ...req.body,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    };
+    // 2. Mise à jour (on exclut l'ID et le sellerId pour plus de sécurité)
+    const { id, sellerId, ...allowedUpdates } = req.body;
 
-    // 💡 Optionnel : Tu pourrais ici repasser updateData dans le ProductModel 
-    // pour valider que les modifications ne cassent pas la structure.
+    const { data: updatedProduct, error } = await supabase
+      .from('products')
+      .update(allowedUpdates)
+      .eq('id', productId)
+      .select()
+      .single();
 
-    await productRef.update(updateData);
-    res.status(200).json({ message: "Produit mis à jour avec succès." });
+    if (error) throw error;
+
+    res.status(200).json({ message: "Produit mis à jour.", product: updatedProduct });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -111,14 +117,29 @@ exports.updateProduct = async (req, res) => {
  */
 exports.deleteProduct = async (req, res) => {
   try {
-    const productRef = db.collection('products').doc(req.params.id);
-    const doc = await productRef.get();
+    const productId = req.params.id;
+    const userId = req.user.id;
 
-    if (!doc.exists) {
-      return res.status(404).json({ message: "Produit introuvable." });
+    // 1. Vérification de propriété
+    const { data: product } = await supabase
+      .from('products')
+      .select('sellerId')
+      .eq('id', productId)
+      .single();
+
+    if (!product) return res.status(404).json({ error: "Produit introuvable." });
+    if (product.sellerId !== userId) {
+      return res.status(403).json({ error: "Interdit : vous n'êtes pas le propriétaire." });
     }
 
-    await productRef.delete();
+    // 2. Suppression
+    const { error: deleteError } = await supabase
+      .from('products')
+      .delete()
+      .eq('id', productId);
+
+    if (deleteError) throw deleteError;
+
     res.status(200).json({ message: "Produit supprimé avec succès." });
   } catch (error) {
     res.status(500).json({ error: error.message });

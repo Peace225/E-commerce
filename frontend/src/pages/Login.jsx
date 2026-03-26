@@ -1,10 +1,9 @@
 import { useState } from "react";
-import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
-import { auth } from "../utils/firebaseConfig"; // On retire 'db' car on passe par l'API
+import { supabase } from "../utils/supabaseClient"; // 🔄 Import de ton client Supabase
 import { useNavigate, Link } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 import AlertMessage from "../components/AlertMessage";
-import { Eye, EyeOff } from "lucide-react";
+import * as Icons from "lucide-react";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -14,22 +13,21 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
 
   const navigate = useNavigate();
-  const provider = new GoogleAuthProvider();
 
-  // 🔐 Synchronisation Backend & Redirection Intelligente
-  const syncAndRedirect = async (firebaseUser) => {
+  // 🔐 Synchronisation Backend & Redirection (Adapté pour Supabase)
+  const syncAndRedirect = async (session) => {
     try {
-      const token = await firebaseUser.getIdToken();
+      const { user } = session;
+      const token = session.access_token; // 🔄 JWT Supabase au lieu du token Firebase
 
-      // 🔄 On envoie le token au backend pour vérification et récupération du profil
       const response = await fetch('http://localhost:5000/api/auth/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token,
-          email: firebaseUser.email,
-          displayName: firebaseUser.displayName,
-          photoURL: firebaseUser.photoURL
+          email: user.email,
+          displayName: user.user_metadata?.full_name || user.email.split('@')[0],
+          photoURL: user.user_metadata?.avatar_url
         })
       });
 
@@ -38,7 +36,7 @@ export default function Login() {
       if (response.ok) {
         const userData = result.user;
         
-        // 🎯 Redirection basée sur le rôle validé par le serveur
+        // 🎯 Redirection basée sur le rôle
         if (userData.role === "admin") {
           navigate("/admin");
         } else if (userData.role === "vendeur") {
@@ -47,7 +45,7 @@ export default function Login() {
           navigate("/mon-compte");
         }
       } else {
-        setAlert(result.error || "Erreur de synchronisation avec le serveur.");
+        setAlert(result.error || "Erreur de synchronisation.");
       }
     } catch (error) {
       console.error("Erreur Auth Backend:", error);
@@ -55,35 +53,45 @@ export default function Login() {
     }
   };
 
+  // 📧 Connexion Email/Password
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
     setAlert("");
 
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      await syncAndRedirect(userCredential.user);
-    } catch (error) {
-      if (error.code === 'auth/invalid-credential') {
-        setAlert("Email ou mot de passe incorrect.");
-      } else {
-        setAlert("Une erreur est survenue lors de la connexion.");
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+
+      if (data.session) {
+        await syncAndRedirect(data.session);
       }
+    } catch (error) {
+      setAlert(error.message === "Invalid login credentials" 
+        ? "Email ou mot de passe incorrect." 
+        : "Une erreur est survenue lors de la connexion.");
     } finally {
       setLoading(false);
     }
   };
 
+  // 🌐 Connexion Google (OAuth Supabase)
   const handleGoogleLogin = async () => {
     setLoading(true);
     try {
-      const result = await signInWithPopup(auth, provider);
-      await syncAndRedirect(result.user);
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin + "/mon-compte" // 🔄 URL de retour après Google
+        }
+      });
+      if (error) throw error;
     } catch (error) {
-      if (error.code !== 'auth/popup-closed-by-user') {
-        setAlert("Erreur lors de la connexion avec Google.");
-      }
-    } finally {
+      setAlert("Erreur lors de la connexion avec Google.");
       setLoading(false);
     }
   };
@@ -127,7 +135,7 @@ export default function Login() {
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
                 >
-                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  {showPassword ? <Icons.EyeOff size={20} /> : <Icons.Eye size={20} />}
                 </button>
               </div>
             </div>

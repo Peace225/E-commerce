@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { collection, addDoc, getDocs, query, where, serverTimestamp } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { db, storage } from "../utils/firebaseConfig";
+
+
 import { v4 as uuidv4 } from "uuid";
 
 import { motion, AnimatePresence } from "framer-motion";

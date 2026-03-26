@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
-import { db, storage } from "../../utils/firebaseConfig";
-import { collection, addDoc, serverTimestamp, doc, updateDoc } from "firebase/firestore";
+
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useAuth } from "../../contexte/AuthContext";
 import * as Icons from "lucide-react";

@@ -1,7 +1,4 @@
 import { useState } from "react";
-import { doc, updateDoc } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { db, storage } from "../utils/firebaseConfig";
 import { v4 as uuidv4 } from "uuid";
 
 export default function EditBoutiqueModal({ boutique, onClose, onUpdated }) {

@@ -4,8 +4,7 @@ import { X, Plus, Minus, Trash2, Ticket, Loader2, ShoppingBag } from "lucide-rea
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCart } from "./CartContext"; 
-import { db } from "../utils/firebaseConfig"; 
-import { collection, query, where, getDocs } from "firebase/firestore";
+ 
 
 export default function PopupPanier({ isOpen, onClose }) {
   const { cartItems, removeFromCart, updateQuantity, clearCart } = useCart(); 

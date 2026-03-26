@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { useCart } from "../components/CartContext";
 import { useAuth } from "../../contexte/AuthContext";
-import { db } from "../utils/firebaseConfig";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { useNavigate, Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import * as Icons from "lucide-react";

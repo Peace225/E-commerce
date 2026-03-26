@@ -1,22 +1,19 @@
 import { useState } from "react";
-import { db, storage } from "../utils/firebaseConfig";
-import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { supabase } from "../utils/supabaseClient"; // 🔄 Import Supabase
 import * as Icons from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function ModalAjouterArticle({ isOpen, onClose, wallet, refreshData }) {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
 
   const [form, setForm] = useState({
     nom: "",
     prix: "",
     description: "",
-    isAffiliationActive: false, // Crochet Affiliation
-    isCommissionActive: false,  // Crochet Commission
+    isAffiliationActive: false,
+    isCommissionActive: false,
   });
 
   const handleFileChange = (e) => {
@@ -34,39 +31,50 @@ export default function ModalAjouterArticle({ isOpen, onClose, wallet, refreshDa
     setIsUploading(true);
 
     try {
-      // 1. Upload de l'image sur Firebase Storage
-      const storageRef = ref(storage, `produits/${wallet.referralCode}_${Date.now()}`);
-      const uploadTask = uploadBytesResumable(storageRef, file);
+      // 1️⃣ Upload de l'image sur Supabase Storage
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${wallet.referralCode}_${Date.now()}.${fileExt}`;
+      const filePath = `produits/${fileName}`;
 
-      uploadTask.on(
-        "state_changed",
-        (snap) => {
-          setUploadProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100));
-        },
-        (error) => { console.error(error); setIsUploading(false); },
-        async () => {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+      const { error: uploadError } = await supabase.storage
+        .from('produits') // ⚠️ Assure-toi que ce bucket existe
+        .upload(filePath, file);
 
-          // 2. Enregistrement dans Firestore
-          await addDoc(collection(db, "produits"), {
-            ...form,
-            prix: Number(form.prix),
-            image: downloadURL,
-            boutiqueId: wallet.referralCode,
-            vendeurEmail: wallet.email,
-            createdAt: serverTimestamp()
-          });
+      if (uploadError) throw uploadError;
 
-          refreshData();
-          setIsUploading(false);
-          setUploadProgress(0);
-          onClose();
-          setForm({ nom: "", prix: "", description: "", isAffiliationActive: false, isCommissionActive: false });
-          setPreview(null);
-        }
-      );
+      // Récupération de l'URL publique
+      const { data: { publicUrl } } = supabase.storage
+        .from('produits')
+        .getPublicUrl(filePath);
+
+      // 2️⃣ Enregistrement dans la table 'produits' (PostgreSQL)
+      const { error: dbError } = await supabase
+        .from('produits')
+        .insert([{
+          ...form,
+          prix: Number(form.prix),
+          image: publicUrl,
+          boutique_id: wallet.referralCode,
+          vendeur_email: wallet.email,
+          vendeur_id: wallet.id, // Supabase utilise 'id'
+          // created_at est géré par défaut par la DB
+        }]);
+
+      if (dbError) throw dbError;
+
+      // Succès !
+      if (refreshData) refreshData();
+      onClose();
+      // Reset du formulaire
+      setForm({ nom: "", prix: "", description: "", isAffiliationActive: false, isCommissionActive: false });
+      setPreview(null);
+      setFile(null);
+      alert("Article publié avec succès ! 🚀");
+
     } catch (error) {
-      console.error("Erreur ajout article:", error);
+      console.error("Erreur ajout article:", error.message);
+      alert("Erreur lors de la publication : " + error.message);
+    } finally {
       setIsUploading(false);
     }
   };
@@ -100,15 +108,6 @@ export default function ModalAjouterArticle({ isOpen, onClose, wallet, refreshDa
               )}
               <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
             </label>
-
-            {isUploading && (
-              <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
-                <motion.div 
-                  className="h-full bg-orange-500" 
-                  initial={{ width: 0 }} animate={{ width: `${uploadProgress}%` }}
-                />
-              </div>
-            )}
           </div>
 
           {/* NOM ET PRIX */}
@@ -116,11 +115,13 @@ export default function ModalAjouterArticle({ isOpen, onClose, wallet, refreshDa
             <input 
               type="text" placeholder="Nom de l'article" required
               className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl text-sm font-bold outline-none focus:border-orange-500 transition-all placeholder:text-slate-600"
+              value={form.nom}
               onChange={(e) => setForm({...form, nom: e.target.value})}
             />
             <input 
               type="number" placeholder="Prix (FCFA)" required
               className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl text-sm font-bold outline-none focus:border-orange-500 transition-all placeholder:text-slate-600"
+              value={form.prix}
               onChange={(e) => setForm({...form, prix: e.target.value})}
             />
           </div>
@@ -129,10 +130,11 @@ export default function ModalAjouterArticle({ isOpen, onClose, wallet, refreshDa
             placeholder="Description détaillée de l'article..."
             className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl text-sm font-bold outline-none focus:border-orange-500 transition-all placeholder:text-slate-600 resize-none"
             rows="3"
+            value={form.description}
             onChange={(e) => setForm({...form, description: e.target.value})}
           />
 
-          {/* 🔗 OPTIONS DE CROCHET (AFFILIATION / COMMISSION) */}
+          {/* 🔗 OPTIONS DE CROCHET */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <label className={`flex items-center gap-4 p-4 rounded-2xl border cursor-pointer transition-all ${form.isAffiliationActive ? 'bg-orange-500/10 border-orange-500' : 'bg-white/5 border-white/10'}`}>
               <input 
@@ -164,7 +166,7 @@ export default function ModalAjouterArticle({ isOpen, onClose, wallet, refreshDa
             disabled={isUploading}
             className="w-full bg-orange-600 hover:bg-orange-500 text-white py-5 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-lg transition-all disabled:opacity-50"
           >
-            {isUploading ? `Envoi en cours... ${uploadProgress}%` : "Publier l'article"}
+            {isUploading ? "Publication..." : "Publier l'article"}
           </button>
         </form>
       </motion.div>

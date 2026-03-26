@@ -9,8 +9,7 @@ import {
   limit,
   startAfter,
   getDocs,
-} from "firebase/firestore";
-import { db } from "../utils/firebaseConfig";
+
 
 export default function Search() {
   const location = useLocation();

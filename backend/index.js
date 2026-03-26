@@ -1,25 +1,27 @@
 const express = require('express');
-const admin = require('firebase-admin');
 const cors = require('cors');
 require('dotenv').config();
 
-const app = express();
+// 1. 🔄 Initialisation de Supabase (qui remplace Firebase Admin)
+const { createClient } = require('@supabase/supabase-js');
 
-// 1. Initialisation Firebase Admin (Singleton)
-const serviceAccount = require("./serviceAccountKey.json");
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY; // Clé secrète (Role Service)
 
-if (!admin.apps.length) {
-    admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
-    });
-    console.log("🔥 Firebase Admin initialisé");
+if (!supabaseUrl || !supabaseServiceKey) {
+    console.error("❌ ERREUR : Les variables SUPABASE_URL et SUPABASE_SERVICE_KEY manquent dans le fichier .env");
+    process.exit(1);
 }
 
-const db = admin.firestore();
+// On crée un client Supabase avec les droits administrateur (bypass RLS)
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
+console.log("🟢 Supabase Admin initialisé avec succès");
+
+const app = express();
 
 // 2. Middlewares globaux
-app.use(cors()); // Autorise ton Frontend (port 3000) à parler au Backend (port 5000)
-app.use(express.json()); // Permet de lire le JSON envoyé dans les requêtes POST
+app.use(cors()); 
+app.use(express.json()); 
 
 // 3. Import des Routes
 const productRoutes = require('./src/routes/productRoutes');
@@ -27,7 +29,7 @@ const orderRoutes = require('./src/routes/orderRoutes');
 const userRoutes = require('./src/routes/userRoutes');
 const authRoutes = require('./src/routes/authRoutes');
 
-// 🔍 DEBUG SYSTEM (Garde-le, c'est ce qui nous a sauvé !)
+// 🔍 DEBUG SYSTEM 
 console.log("--- Statut des Routes ---");
 console.log("Products:", typeof productRoutes);
 console.log("Orders:", typeof orderRoutes);
@@ -52,5 +54,5 @@ app.listen(PORT, () => {
     console.log(`🚀 Serveur Rynek en ligne sur http://localhost:${PORT}`);
 });
 
-// Export pour usage interne si besoin
-module.exports = { db, admin };
+// 📤 On exporte supabase pour pouvoir l'utiliser dans tes controllers !
+module.exports = { supabase };

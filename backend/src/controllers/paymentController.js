@@ -1,5 +1,4 @@
-const admin = require('firebase-admin');
-const db = admin.firestore();
+const { supabase } = require('../../index'); // 🔄 Client Supabase
 
 /**
  * 💸 Gérer une demande de retrait (Withdrawal)
@@ -15,41 +14,52 @@ exports.requestWithdrawal = async (req, res) => {
   }
 
   try {
-    const userRef = db.collection('users').doc(uid);
+    // 2. Vérification de l'utilisateur et de son solde
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('email, balance')
+      .eq('id', uid)
+      .single();
 
-    // 2. Utilisation d'une transaction pour la sécurité financière
-    await db.runTransaction(async (transaction) => {
-      const userDoc = await transaction.get(userRef);
+    if (userError || !user) {
+      throw new Error("Utilisateur introuvable.");
+    }
 
-      if (!userDoc.exists) {
-        throw new Error("Utilisateur introuvable.");
-      }
+    const currentBalance = user.balance || 0;
 
-      const currentBalance = userDoc.data().balance || 0;
+    // Vérification du solde disponible
+    if (currentBalance < amount) {
+      throw new Error("Solde insuffisant pour ce retrait.");
+    }
 
-      // Vérification du solde disponible
-      if (currentBalance < amount) {
-        throw new Error("Solde insuffisant pour ce retrait.");
-      }
+    // 3. Mise à jour du solde (Déduction immédiate)
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({ balance: currentBalance - amount })
+      .eq('id', uid);
 
-      // 3. Mise à jour du solde (Déduction immédiate)
-      transaction.update(userRef, {
-        balance: admin.firestore.FieldValue.increment(-amount)
-      });
+    if (updateError) throw updateError;
 
-      // 4. Création de la trace dans la collection 'withdrawals'
-      const withdrawalRef = db.collection('withdrawals').doc();
-      transaction.set(withdrawalRef, {
-        userId: uid,
-        userEmail: userDoc.data().email,
+    // 4. Création de la trace dans la table 'withdrawals'
+    const { error: insertError } = await supabase
+      .from('withdrawals')
+      .insert([{
+        userId: uid, // ⚠️ Assure-toi que la colonne s'appelle bien 'userId' ou 'user_id' dans Supabase
+        userEmail: user.email,
         amount: parseFloat(amount),
         method: method, // Orange Money, Wave, etc.
         paymentDetails: paymentDetails,
         status: 'en_attente',
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      });
-    });
+        // createdAt et updatedAt sont généralement gérés automatiquement par Supabase (valeur par défaut : now())
+        // Si tu n'as pas mis de valeur par défaut dans ta table, décommente la ligne suivante :
+        // createdAt: new Date().toISOString() 
+      }]);
+
+    if (insertError) {
+      // Cas rare : L'argent a été déduit mais la trace a échoué.
+      console.error("⚠️ ALERTE : Trace de retrait non sauvegardée pour l'UID:", uid);
+      throw insertError;
+    }
 
     res.status(200).json({ 
       message: "Demande de retrait enregistrée avec succès ! 🚀" 
@@ -68,15 +78,13 @@ exports.getPaymentHistory = async (req, res) => {
   const { uid } = req.params;
 
   try {
-    const snapshot = await db.collection('withdrawals')
-      .where('userId', '==', uid)
-      .orderBy('createdAt', 'desc')
-      .get();
+    const { data: history, error } = await supabase
+      .from('withdrawals')
+      .select('*')
+      .eq('userId', uid)
+      .order('createdAt', { ascending: false }); // orderBy('createdAt', 'desc')
 
-    const history = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
+    if (error) throw error;
 
     res.status(200).json(history);
   } catch (error) {

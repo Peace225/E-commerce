@@ -1,21 +1,20 @@
 const express = require('express');
-const router = express.Router(); // <--- Vérifie bien que cette ligne existe !
+const router = express.Router(); 
 const orderController = require('../controllers/orderController');
 
-// 🛒 CRÉATION (Acheteur)
-// URL: POST http://localhost:5000/api/orders
-router.post('/', orderController.createOrder);
+// ✅ ON CHANGE CETTE LIGNE : On pointe vers le bon fichier et on extrait la fonction 'protect'
+const { protect } = require('../middlewares/authMiddleware'); 
+
+// 🛒 CRÉATION (Acheteur) - On ajoute 'protect' pour sécuriser la route
+router.post('/', protect, orderController.createOrder);
 
 // 📜 HISTORIQUE (Acheteur ou Vendeur)
-// URL: GET http://localhost:5000/api/orders?uid=ID_USER&role=buyer
-router.get('/', orderController.getUserOrders);
+router.get('/', protect, orderController.getUserOrders);
 
 // 🔍 DÉTAIL D'UNE COMMANDE
-// URL: GET http://localhost:5000/api/orders/:id
-router.get('/:id', orderController.getOrderDetail);
+router.get('/:id', protect, orderController.getOrderDetail);
 
-// 📦 MISE À JOUR DU STATUT (Vendeur ou Admin)
-// URL: PUT http://localhost:5000/api/orders/:id/status
-router.put('/:id/status', orderController.updateOrderStatus);
+// 📦 MISE À JOUR DU STATUT
+router.put('/:id/status', protect, orderController.updateOrderStatus);
 
-module.exports = router; // <--- Maintenant 'router' est bien défini
+module.exports = router;

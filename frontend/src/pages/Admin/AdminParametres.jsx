@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import * as Icons from "lucide-react";
 import { motion } from "framer-motion";
-import { db } from "../../utils/firebaseConfig";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+
 
 export default function AdminParametres() {
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem("theme") === "dark");

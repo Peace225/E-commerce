@@ -1,6 +1,4 @@
 import { useEffect, useState } from "react";
-import { collection, getDocs, query, orderBy } from "firebase/firestore";
-import { db } from "../utils/firebaseConfig";
 import dayjs from "dayjs";
 
 export default function ListeVentes() {

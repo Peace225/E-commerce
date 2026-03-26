@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import * as Icons from "lucide-react";
 import { motion } from "framer-motion";
-import { db } from "../../utils/firebaseConfig";
-import { collection, onSnapshot, query, limit, orderBy, where } from "firebase/firestore";
+
 
 export default function AdminHome() {
   const [stats, setStats] = useState({

@@ -4,10 +4,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import * as Icons from "lucide-react";
 
 // --- LOGIQUE FIREBASE & AUTH ---
-import { auth, db } from "../../utils/firebaseConfig";
-import { doc, setDoc, serverTimestamp, onSnapshot } from "firebase/firestore";
+
 import { useAuth } from "../../contexte/AuthContext";
-import { signOut } from "firebase/auth";
+
 
 // --- COMPOSANTS DE STRUCTURE ---
 import SidebarDashboard from "../dashboard/SidebarDashboard";
