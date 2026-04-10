@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
-import { supabase } from "../utils/supabaseClient"; // 🔄 Bye Firebase, Bonjour Supabase !
+import { supabase } from "../utils/supabaseClient"; 
 import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 import AlertMessage from "../components/AlertMessage";
-import { ShoppingBag, Store, MessageCircle } from "lucide-react";
+import { ShoppingBag, Store, MessageCircle, Loader2 } from "lucide-react";
 
 export default function Register() {
   const navigate = useNavigate();
@@ -29,75 +29,50 @@ export default function Register() {
     if (refFromUrl) setRefCode(refFromUrl);
   }, [searchParams]);
 
-  // 🔄 SYNCHRONISATION AVEC LE BACKEND RYNEK
-  const syncWithBackend = async (session, additionalData) => {
-    try {
-      const token = session.access_token; // 🔑 JWT Supabase
-
-      const response = await fetch('http://localhost:5000/api/auth/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token,
-          ...additionalData
-        })
-      });
-
-      const result = await response.json();
-
-      if (response.ok) {
-        setAlert(`🎉 Compte créé avec succès ! Bienvenue.`);
-        setTimeout(() => {
-          navigate(accountType === "vendeur" ? "/dashboard" : "/mon-compte");
-        }, 2000);
-      } else {
-        setAlert(result.error || "Erreur de synchronisation avec le serveur.");
-      }
-    } catch (error) {
-      console.error("Erreur Backend:", error);
-      setAlert("Le serveur Rynek est injoignable.");
-    }
-  };
-
   const handleRegister = async (e) => {
     e.preventDefault();
     setLoading(true);
     setAlert("");
 
     try {
-      // 1. Préparation des données spécifiques au rôle
+      // 1. Préparation du nom d'affichage selon le rôle
       const displayNameFinal = accountType === "client" ? `${prenom} ${nom}` : nomBoutique;
       
       const payload = {
         role: accountType,
+        full_name: displayNameFinal,
         whatsapp: telephone,
-        displayName: displayNameFinal,
-        referralCodeUsed: refCode, // Transmet le parrain s'il existe
-        ...(accountType === "client" 
-          ? { nom, prenom } 
-          : { nomBoutique, categorieBoutique }
-        )
+        referral_code_used: refCode,
+        ...(accountType === "vendeur" && { boutique_category: categorieBoutique })
       };
 
-      // 2. Création dans Supabase Auth (avec les métadonnées)
+      // 2. Création dans Supabase Auth (avec toutes les métadonnées)
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: payload // 🚀 On stocke directement tout ça dans user_metadata !
+          data: payload // 🚀 Supabase va stocker ces infos et ton Trigger SQL fera le reste !
         }
       });
 
       if (error) throw error;
 
-      // 3. Gestion de la suite selon la configuration Supabase
+      // 3. Gestion de la suite et REDIRECTION SÉPARÉE
       if (data.session) {
-        // Si la confirmation par email est DÉSACTIVÉE (Recommandé pour tes tests)
-        // L'utilisateur est connecté direct, on synchronise avec ton backend
-        await syncWithBackend(data.session, payload);
+        // L'utilisateur est connecté directement (si confirmation email désactivée)
+        setAlert(`🎉 Compte ${accountType} créé avec succès ! Préparation de votre espace...`);
+        
+        // 🔀 LA LOGIQUE DE REDIRECTION SÉPARÉE EST ICI
+        setTimeout(() => {
+          if (accountType === "vendeur") {
+            navigate("/dashboard"); // 👉 Espace Rynek Pro
+          } else {
+            navigate("/mon-compte"); // 👉 Espace Client Standard
+          }
+        }, 2000);
+
       } else {
-        // Si la confirmation par email est ACTIVÉE
-        // Pas de session immédiate, l'utilisateur doit aller cliquer dans son mail
+        // Si la confirmation par email est requise par Supabase
         setAlert("🎉 Compte créé ! Un email d'activation vous a été envoyé. Veuillez vérifier votre boîte de réception.");
         setTimeout(() => {
           navigate("/login");
@@ -106,7 +81,6 @@ export default function Register() {
 
     } catch (error) {
       console.error("Erreur Inscription Supabase:", error.message);
-      // Supabase renvoie un message spécifique si l'email existe déjà
       const isAlreadyUsed = error.message.includes("already registered") || error.message.includes("already exists");
       setAlert("❌ " + (isAlreadyUsed ? "Cet email est déjà utilisé." : "Une erreur est survenue lors de l'inscription."));
     } finally {
@@ -176,7 +150,7 @@ export default function Register() {
                 <input type="tel" required placeholder="WhatsApp (Suivi de commande)" className="w-full border-2 border-gray-50 p-4 pl-12 rounded-2xl text-sm outline-none focus:border-gray-300 transition-all" onChange={(e) => setTelephone(e.target.value)} />
               </div>
 
-              <input type="email" required placeholder="Email professionnel" className="w-full border-2 border-gray-50 p-4 rounded-2xl text-sm outline-none focus:border-gray-300 transition-all" onChange={(e) => setEmail(e.target.value)} />
+              <input type="email" required placeholder="Adresse Email" className="w-full border-2 border-gray-50 p-4 rounded-2xl text-sm outline-none focus:border-gray-300 transition-all" onChange={(e) => setEmail(e.target.value)} />
               
               <input type="password" required placeholder="Mot de passe" className="w-full border-2 border-gray-50 p-4 rounded-2xl text-sm outline-none focus:border-gray-300 transition-all" onChange={(e) => setPassword(e.target.value)} />
             </div>
@@ -184,11 +158,11 @@ export default function Register() {
             <button
               type="submit"
               disabled={loading}
-              className={`w-full py-5 rounded-2xl font-black uppercase tracking-widest text-[11px] shadow-xl transition-all active:scale-95 disabled:opacity-50 ${
+              className={`w-full py-5 rounded-2xl font-black flex items-center justify-center gap-3 uppercase tracking-widest text-[11px] shadow-xl transition-all active:scale-95 disabled:opacity-50 ${
                 accountType === "client" ? "bg-orange-600 hover:bg-orange-700 text-white shadow-orange-600/20" : "bg-blue-700 hover:bg-blue-800 text-white shadow-blue-700/20"
               }`}
             >
-              {loading ? "Traitement..." : `Créer mon compte ${accountType}`}
+              {loading ? <Loader2 className="animate-spin" size={18} /> : `Créer mon compte ${accountType}`}
             </button>
 
             <p className="text-center text-[10px] text-gray-400 font-bold uppercase pt-2">

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import * as Icons from "lucide-react";
 import { motion } from "framer-motion";
-
+import { supabase } from "../../utils/supabaseClient"; // 🔄 Import essentiel de Supabase
 
 export default function AdminHome() {
   const [stats, setStats] = useState({
@@ -15,38 +15,70 @@ export default function AdminHome() {
   const [recentActivities, setRecentActivities] = useState([]);
 
   useEffect(() => {
-    // 1. Stats Utilisateurs & Balance
-    const unsubUsers = onSnapshot(collection(db, "users"), (snap) => {
-      const allUsers = snap.docs.map(d => d.data());
-      setStats(prev => ({
-        ...prev,
-        users: snap.size,
-        balance: allUsers.reduce((acc, curr) => acc + (curr.balance || 0), 0)
-      }));
-    });
+    // 🚀 FONCTION DE CHARGEMENT INITIAL
+    const fetchStats = async () => {
+      try {
+        // 1. Stats Utilisateurs & Balance globale
+        const { data: usersData, count: usersCount } = await supabase
+          .from('users')
+          .select('balance', { count: 'exact' });
+        
+        const totalBalance = usersData 
+          ? usersData.reduce((acc, curr) => acc + (curr.balance || 0), 0) 
+          : 0;
 
-    // 2. Stats Boutiques
-    const unsubBoutiques = onSnapshot(collection(db, "boutiques"), (snap) => {
-      setStats(prev => ({ ...prev, boutiques: snap.size }));
-    });
+        // 2. Stats Boutiques
+        const { count: boutiquesCount } = await supabase
+          .from('boutiques')
+          .select('*', { count: 'exact', head: true });
 
-    // 3. Retraits en attente
-    const qWithdrawals = query(collection(db, "transactions"), where("status", "==", "En attente"));
-    const unsubWithdrawals = onSnapshot(qWithdrawals, (snap) => {
-      setStats(prev => ({ ...prev, pendingWithdrawals: snap.size }));
-    });
+        // 3. Retraits en attente
+        const { count: pendingCount } = await supabase
+          .from('transactions')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'En attente')
+          .eq('type', 'withdrawal'); // Précision utile si tu as plusieurs types de transactions
 
-    // 4. Flux d'activités récentes (Mélange de nouvelles ventes et inscriptions)
-    const qRecent = query(collection(db, "transactions"), orderBy("createdAt", "desc"), limit(5));
-    const unsubRecent = onSnapshot(qRecent, (snap) => {
-      setRecentActivities(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+        setStats(prev => ({
+          ...prev,
+          users: usersCount || 0,
+          balance: totalBalance,
+          boutiques: boutiquesCount || 0,
+          pendingWithdrawals: pendingCount || 0
+        }));
 
+        // 4. Flux d'activités récentes (les 5 dernières transactions)
+        const { data: recentData } = await supabase
+          .from('transactions')
+          .select('*')
+          .order('created_at', { ascending: false }) // Attention: Supabase utilise souvent created_at au lieu de createdAt
+          .limit(5);
+
+        if (recentData) setRecentActivities(recentData);
+
+      } catch (error) {
+        console.error("Erreur lors du chargement des statistiques globales:", error);
+      }
+    };
+
+    fetchStats();
+
+    // ⚡ SOUSCRIPTIONS TEMPS RÉEL (Le nouveau 'onSnapshot')
+    const channels = supabase.channel('admin-dashboard-stats')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => {
+        fetchStats(); // Recharge si un user est ajouté ou si une balance change
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'boutiques' }, () => {
+        fetchStats(); 
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => {
+        fetchStats(); 
+      })
+      .subscribe();
+
+    // Nettoyage à la destruction du composant
     return () => {
-      unsubUsers();
-      unsubBoutiques();
-      unsubWithdrawals();
-      unsubRecent();
+      supabase.removeChannel(channels);
     };
   }, []);
 
@@ -54,7 +86,7 @@ export default function AdminHome() {
     { 
       title: "Utilisateurs", 
       value: stats.users, 
-      desc: "Ambassadeurs Rynek Pro", 
+      desc: "Comptes enregistrés", 
       icon: <Icons.Users size={24} />, 
       color: "text-emerald-500 bg-emerald-500/10",
       border: "border-emerald-500/20" 
@@ -62,7 +94,7 @@ export default function AdminHome() {
     { 
       title: "Boutiques", 
       value: stats.boutiques, 
-      desc: "Partenaires enregistrés", 
+      desc: "Partenaires actifs", 
       icon: <Icons.Store size={24} />, 
       color: "text-blue-500 bg-blue-500/10",
       border: "border-blue-500/20" 
@@ -131,7 +163,7 @@ export default function AdminHome() {
           
           <div className="space-y-6">
             {recentActivities.length > 0 ? recentActivities.map((act, i) => (
-              <div key={i} className="flex items-center justify-between p-4 hover:bg-white/5 rounded-2xl transition-all border border-transparent hover:border-white/5 group">
+              <div key={act.id || i} className="flex items-center justify-between p-4 hover:bg-white/5 rounded-2xl transition-all border border-transparent hover:border-white/5 group">
                 <div className="flex items-center gap-4">
                   <div className={`p-3 rounded-xl bg-white/5 ${act.type === 'withdrawal' ? 'text-orange-500' : 'text-emerald-500'}`}>
                     {act.type === 'withdrawal' ? <Icons.ArrowUpRight size={18}/> : <Icons.ArrowDownLeft size={18}/>}

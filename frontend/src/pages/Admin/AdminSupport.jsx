@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import * as Icons from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { supabase } from "../../utils/supabaseClient"; // 🔄 Import Supabase
 
 export default function AdminSupport() {
   const [tickets, setTickets] = useState([]);
@@ -13,25 +14,56 @@ export default function AdminSupport() {
   const [replyText, setReplyText] = useState("");
   const [isReplying, setIsReplying] = useState(false);
 
-  // 🔄 SYNCHRONISATION DES TICKETS
+  // 🔄 SYNCHRONISATION DES TICKETS AVEC SUPABASE
   useEffect(() => {
-    const q = query(collection(db, "tickets"), orderBy("updatedAt", "desc"));
-    const unsub = onSnapshot(q, (snap) => {
-      setTickets(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setLoading(false);
-    });
-    return () => unsub();
+    const fetchTickets = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('tickets')
+          .select('*')
+          .order('updated_at', { ascending: false }); // Utilisation de updated_at
+
+        if (error) throw error;
+        if (data) setTickets(data);
+      } catch (error) {
+        console.error("Erreur chargement des tickets:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTickets();
+
+    // ⚡ Souscription temps réel
+    const channel = supabase.channel('admin-support-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, () => {
+        fetchTickets();
+      })
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
   }, []);
 
   // ⚙️ CHANGER LE STATUT D'UN TICKET
   const updateTicketStatus = async (ticketId, newStatus) => {
     try {
-      await updateDoc(doc(db, "tickets", ticketId), { 
-        status: newStatus,
-        updatedAt: serverTimestamp()
-      });
+      const { error } = await supabase
+        .from('tickets')
+        .update({ 
+          status: newStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', ticketId);
+
+      if (error) throw error;
+      
+      // Mettre à jour l'état local du ticket sélectionné si la modale est ouverte
+      if (selectedTicket && selectedTicket.id === ticketId) {
+        setSelectedTicket(prev => ({ ...prev, status: newStatus }));
+      }
     } catch (error) {
       console.error("Erreur statut:", error);
+      alert("❌ Erreur lors de la mise à jour du statut.");
     }
   };
 
@@ -44,20 +76,31 @@ export default function AdminSupport() {
     const newMessage = {
       sender: "admin",
       text: replyText,
-      createdAt: new Date().toISOString()
+      created_at: new Date().toISOString()
     };
 
     try {
-      await updateDoc(doc(db, "tickets", selectedTicket.id), {
-        messages: arrayUnion(newMessage),
-        status: "En cours", // Passe automatiquement en cours quand l'admin répond
-        updatedAt: serverTimestamp()
-      });
+      // 1. Récupérer les messages actuels (géré comme un tableau JSONB dans Supabase)
+      const currentMessages = selectedTicket.messages || [];
+      const updatedMessages = [...currentMessages, newMessage];
+
+      // 2. Mettre à jour la base de données
+      const { error } = await supabase
+        .from('tickets')
+        .update({
+          messages: updatedMessages,
+          status: "En cours", // Passe automatiquement en cours quand l'admin répond
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', selectedTicket.id);
+
+      if (error) throw error;
       
-      // Mettre à jour la vue locale pour voir le message immédiatement
+      // 3. Mettre à jour la vue locale pour voir le message immédiatement
       setSelectedTicket(prev => ({
         ...prev,
-        messages: [...(prev.messages || []), newMessage]
+        status: "En cours",
+        messages: updatedMessages
       }));
       setReplyText("");
     } catch (error) {
@@ -68,10 +111,13 @@ export default function AdminSupport() {
     }
   };
 
-  // 🔍 FILTRAGE
+  // 🔍 FILTRAGE (Sécurisé pour les noms de variables)
   const filteredTickets = tickets.filter(t => {
-    const matchesSearch = t.userEmail?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          t.subject?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const email = t.user_email || t.userEmail || "";
+    const subject = t.subject || t.sujet || "";
+    
+    const matchesSearch = email.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           t.id?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = filterStatus === "Tous" || t.status === filterStatus;
     return matchesSearch && matchesStatus;
@@ -90,6 +136,14 @@ export default function AdminSupport() {
     "En cours": "bg-orange-500/10 text-orange-500 border-orange-500/20",
     "Résolu": "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Icons.Loader2 className="animate-spin text-blue-500" size={40} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-10 pb-10">
@@ -131,12 +185,12 @@ export default function AdminSupport() {
               className="w-full bg-[#0f172a] border border-white/10 rounded-2xl py-3 pl-12 pr-4 text-xs font-bold text-white focus:border-red-500 outline-none transition-all"
             />
           </div>
-          <div className="flex gap-2 bg-[#0f172a] p-1.5 rounded-2xl border border-white/5 shadow-inner overflow-x-auto no-scrollbar">
+          <div className="flex gap-2 bg-[#0f172a] p-1.5 rounded-2xl border border-white/5 shadow-inner overflow-x-auto custom-scrollbar">
             {["Tous", "Ouvert", "En cours", "Résolu"].map((s) => (
               <button
                 key={s} onClick={() => setFilterStatus(s)}
                 className={`px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all whitespace-nowrap
-                  ${filterStatus === s ? "bg-red-600 text-white shadow-lg" : "text-slate-500 hover:text-white"}`}
+                  ${filterStatus === s ? "bg-red-600 text-white shadow-lg shadow-red-600/20" : "text-slate-500 hover:text-white"}`}
               >
                 {s}
               </button>
@@ -160,43 +214,48 @@ export default function AdminSupport() {
             </thead>
             <tbody className="divide-y divide-white/5">
               <AnimatePresence>
-                {filteredTickets.map((t, i) => (
-                  <motion.tr 
-                    initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-                    key={t.id} className={`hover:bg-white/[0.02] transition-colors group ${t.status === 'Résolu' ? 'opacity-50' : ''}`}
-                  >
-                    <td className="p-8">
-                      <div className="flex flex-col">
-                        <span className="font-black text-white text-xs uppercase tracking-tight">{t.userName || "Client"}</span>
-                        <span className="text-[10px] text-slate-500 font-bold">{t.userEmail}</span>
-                      </div>
-                    </td>
-                    <td className="p-8">
-                      <div className="flex flex-col">
-                        <span className="text-sm font-bold text-slate-300 truncate max-w-[250px]">{t.subject}</span>
-                        <span className="text-[9px] font-mono text-slate-500 mt-1 uppercase">ID: {t.id.slice(0, 8)}</span>
-                      </div>
-                    </td>
-                    <td className="p-8 text-center">
-                      <span className="text-slate-400 font-bold text-[10px] italic">
-                        {t.updatedAt?.toDate().toLocaleDateString('fr-FR')}
-                      </span>
-                    </td>
-                    <td className="p-8 text-center">
-                      <span className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border ${statusColors[t.status] || 'bg-slate-500/10 text-slate-500'}`}>
-                        {t.status || "Ouvert"}
-                      </span>
-                    </td>
-                    <td className="p-8 text-right">
-                      <button 
-                        onClick={() => setSelectedTicket(t)}
-                        className="px-6 py-3 bg-slate-800 hover:bg-blue-600 text-slate-300 hover:text-white rounded-xl font-black uppercase text-[10px] tracking-widest transition-all shadow-lg inline-flex items-center gap-2"
-                      >
-                        <Icons.MessageSquare size={14} /> Répondre
-                      </button>
-                    </td>
-                  </motion.tr>
-                ))}
+                {filteredTickets.map((t, i) => {
+                  const dateString = t.updated_at || t.updatedAt;
+                  const dateObj = dateString ? new Date(dateString) : new Date();
+
+                  return (
+                    <motion.tr 
+                      initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
+                      key={t.id} className={`hover:bg-white/[0.02] transition-colors group ${t.status === 'Résolu' ? 'opacity-50 hover:opacity-100' : ''}`}
+                    >
+                      <td className="p-8">
+                        <div className="flex flex-col">
+                          <span className="font-black text-white text-xs uppercase tracking-tight">{t.user_name || t.userName || "Client"}</span>
+                          <span className="text-[10px] text-slate-500 font-bold">{t.user_email || t.userEmail}</span>
+                        </div>
+                      </td>
+                      <td className="p-8">
+                        <div className="flex flex-col">
+                          <span className="text-sm font-bold text-slate-300 truncate max-w-[250px]">{t.subject || t.sujet}</span>
+                          <span className="text-[9px] font-mono text-slate-500 mt-1 uppercase">ID: {t.id.slice(0, 8)}</span>
+                        </div>
+                      </td>
+                      <td className="p-8 text-center">
+                        <span className="text-slate-400 font-bold text-[10px] italic">
+                          {dateObj.toLocaleDateString('fr-FR')} à {dateObj.toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'})}
+                        </span>
+                      </td>
+                      <td className="p-8 text-center">
+                        <span className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border ${statusColors[t.status] || 'bg-slate-500/10 text-slate-500'}`}>
+                          {t.status || "Ouvert"}
+                        </span>
+                      </td>
+                      <td className="p-8 text-right">
+                        <button 
+                          onClick={() => setSelectedTicket(t)}
+                          className="px-6 py-3 bg-slate-800 hover:bg-blue-600 text-slate-300 hover:text-white rounded-xl font-black uppercase text-[10px] tracking-widest transition-all shadow-lg inline-flex items-center gap-2"
+                        >
+                          <Icons.MessageSquare size={14} /> Traiter
+                        </button>
+                      </td>
+                    </motion.tr>
+                  );
+                })}
               </AnimatePresence>
             </tbody>
           </table>
@@ -219,24 +278,37 @@ export default function AdminSupport() {
               {/* Header Modal */}
               <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
                 <div>
-                  <h2 className="text-lg font-black uppercase tracking-tighter text-white">{selectedTicket.subject}</h2>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Par : {selectedTicket.userEmail}</p>
+                  <h2 className="text-lg font-black uppercase tracking-tighter text-white">{selectedTicket.subject || selectedTicket.sujet}</h2>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Par : {selectedTicket.user_email || selectedTicket.userEmail}</p>
                 </div>
-                <button onClick={() => setSelectedTicket(null)} className="p-2 text-slate-400 hover:text-white bg-slate-800 rounded-xl"><Icons.X size={20} /></button>
+                <button onClick={() => setSelectedTicket(null)} className="p-2 text-slate-400 hover:text-white bg-slate-800 rounded-xl transition-colors"><Icons.X size={20} /></button>
               </div>
 
               {/* Zone de Chat (Messages) */}
-              <div className="p-6 flex-1 overflow-y-auto space-y-4 custom-scrollbar bg-[#020617] min-h-[300px]">
-                {selectedTicket.messages?.map((msg, idx) => (
-                  <div key={idx} className={`flex ${msg.sender === "admin" ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[80%] p-4 rounded-2xl ${msg.sender === "admin" ? "bg-red-600 text-white rounded-br-none" : "bg-slate-800 text-slate-300 rounded-bl-none"}`}>
-                      <p className="text-xs font-bold leading-relaxed">{msg.text}</p>
-                      <p className={`text-[8px] font-black uppercase tracking-widest mt-2 opacity-50 ${msg.sender === "admin" ? "text-right" : "text-left"}`}>
-                        {msg.sender === "admin" ? "Support Rynek" : "Client"}
-                      </p>
+              <div className="p-6 flex-1 overflow-y-auto space-y-4 custom-scrollbar bg-[#020617] min-h-[300px] max-h-[500px]">
+                {selectedTicket.messages && selectedTicket.messages.length > 0 ? (
+                  selectedTicket.messages.map((msg, idx) => (
+                    <div key={idx} className={`flex ${msg.sender === "admin" ? "justify-end" : "justify-start"}`}>
+                      <div className={`max-w-[80%] p-4 rounded-2xl ${msg.sender === "admin" ? "bg-red-600 text-white rounded-br-none shadow-lg shadow-red-600/20" : "bg-slate-800 text-slate-300 rounded-bl-none border border-white/5"}`}>
+                        <p className="text-xs font-bold leading-relaxed">{msg.text}</p>
+                        <div className={`flex justify-between items-center mt-2 opacity-60 ${msg.sender === "admin" ? "flex-row-reverse" : "flex-row"}`}>
+                           <p className="text-[8px] font-black uppercase tracking-widest">
+                             {msg.sender === "admin" ? "Support Rynek" : "Client"}
+                           </p>
+                           {msg.created_at && (
+                             <p className="text-[8px] font-bold">
+                               {new Date(msg.created_at).toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'})}
+                             </p>
+                           )}
+                        </div>
+                      </div>
                     </div>
+                  ))
+                ) : (
+                  <div className="flex items-center justify-center h-full text-slate-500 font-bold text-xs uppercase tracking-widest">
+                    Aucun message dans ce ticket
                   </div>
-                ))}
+                )}
               </div>
 
               {/* Zone d'action & Réponse */}
@@ -246,18 +318,19 @@ export default function AdminSupport() {
                     <textarea 
                       value={replyText} onChange={(e) => setReplyText(e.target.value)}
                       placeholder="Écrivez votre réponse au client..." 
-                      className="w-full bg-[#020617] border border-white/10 rounded-2xl p-4 text-xs font-bold text-white focus:border-red-500 outline-none resize-none h-24 custom-scrollbar"
+                      className="w-full bg-[#020617] border border-white/10 rounded-2xl p-4 text-xs font-bold text-white focus:border-red-500 outline-none resize-none h-24 custom-scrollbar transition-colors"
                     />
-                    <div className="flex justify-between items-center gap-4">
+                    <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
                       <button 
-                        type="button" onClick={() => { updateTicketStatus(selectedTicket.id, "Résolu"); setSelectedTicket(null); }}
-                        className="px-6 py-3 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white rounded-xl font-black uppercase text-[10px] tracking-widest transition-all flex items-center gap-2"
+                        type="button" 
+                        onClick={() => updateTicketStatus(selectedTicket.id, "Résolu")}
+                        className="w-full sm:w-auto px-6 py-3 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white rounded-xl font-black uppercase text-[10px] tracking-widest transition-all flex items-center justify-center gap-2"
                       >
                         <Icons.CheckCircle2 size={16} /> Marquer comme Résolu
                       </button>
                       <button 
                         type="submit" disabled={isReplying || !replyText.trim()}
-                        className="flex-1 py-3 bg-red-600 hover:bg-red-700 disabled:bg-slate-800 text-white rounded-xl font-black uppercase text-[10px] tracking-widest transition-all flex justify-center items-center gap-2"
+                        className="w-full sm:w-auto flex-1 py-3 bg-red-600 hover:bg-red-700 disabled:bg-slate-800 text-white rounded-xl font-black uppercase text-[10px] tracking-widest transition-all flex justify-center items-center gap-2 shadow-lg shadow-red-600/20 disabled:shadow-none"
                       >
                         {isReplying ? <Icons.Loader2 className="animate-spin" size={16} /> : <><Icons.Send size={16} /> Envoyer la réponse</>}
                       </button>

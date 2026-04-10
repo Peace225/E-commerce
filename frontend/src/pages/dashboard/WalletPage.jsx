@@ -1,10 +1,7 @@
 import { useState, useEffect } from "react";
 import * as Icons from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-
-// 🔥 IMPORTS FIREBASE
-
-
+import { supabase } from "../../utils/supabaseClient";
 
 export default function WalletPage({ wallet, user }) {
   // 🔹 ÉTATS
@@ -12,31 +9,41 @@ export default function WalletPage({ wallet, user }) {
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
   const [amount, setAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("Wave");
-  const [isProcessing, setIsProcessing] = useState(false); // Pour le bouton de chargement
-  const [transactions, setTransactions] = useState([]); // Historique depuis Firebase
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [transactions, setTransactions] = useState([]);
 
   const solde = wallet?.balance || 0;
 
-  // 🔄 1. REQUÊTE : RÉCUPÉRER L'HISTORIQUE EN TEMPS RÉEL
+  // 🔄 1. REQUÊTE : RÉCUPÉRER L'HISTORIQUE SUPABASE
   useEffect(() => {
     if (!user) return;
 
-    // On cible la collection "transactions" où l'ID correspond à l'utilisateur
-    const q = query(
-      collection(db, "transactions"),
-      where("userId", "==", user.uid),
-      orderBy("createdAt", "desc") // Du plus récent au plus ancien
-    );
+    const fetchTransactions = async () => {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const trxData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setTransactions(trxData);
-    });
+      if (!error && data) {
+        setTransactions(data);
+      }
+    };
 
-    return () => unsubscribe();
+    fetchTransactions();
+
+    // Abonnement Temps Réel Supabase
+    const channel = supabase
+      .channel('public:transactions')
+      .on('postgres_changes', 
+        { event: 'INSERT', schema: 'public', table: 'transactions', filter: `user_id=eq.${user.id}` }, 
+        (payload) => {
+          setTransactions(current => [payload.new, ...current]);
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [user]);
 
   // 💳 2. REQUÊTE : RECHARGER LE COMPTE (DÉPÔT)
@@ -46,26 +53,32 @@ export default function WalletPage({ wallet, user }) {
     setIsProcessing(true);
 
     try {
-      // ÉTAPE A : Créer la trace de la transaction
-      await addDoc(collection(db, "transactions"), {
-        userId: user.uid,
+      // ÉTAPE A : Créer la trace
+      const { error: trxError } = await supabase.from('transactions').insert([{
+        user_id: user.id,
         type: "deposit",
         title: "Rechargement Compte",
         amount: Number(amount),
         method: paymentMethod,
-        status: "Complété",
-        createdAt: serverTimestamp()
-      });
+        status: "Complété"
+      }]);
 
-      // ÉTAPE B : Ajouter l'argent au solde de l'utilisateur
-      const userRef = doc(db, "users", user.uid);
-      await updateDoc(userRef, {
-        balance: increment(Number(amount)) // 🔥 "increment" est sécurisé contre les bugs de synchronisation
-      });
+      if (trxError) throw trxError;
+
+      // ÉTAPE B : Mettre à jour le solde (RPC - Function si possible, sinon update simple)
+      const newBalance = solde + Number(amount);
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ balance: newBalance })
+        .eq('id', user.id);
+
+      if (updateError) throw updateError;
 
       alert(`✅ Rechargement de ${amount} F via ${paymentMethod} réussi !`);
       setIsDepositOpen(false);
       setAmount("");
+      // Rafraichir le solde via parent ou recharger la page
+      window.location.reload(); 
     } catch (error) {
       console.error("Erreur de rechargement :", error);
       alert("❌ Une erreur est survenue.");
@@ -87,26 +100,31 @@ export default function WalletPage({ wallet, user }) {
     setIsProcessing(true);
 
     try {
-      // ÉTAPE A : Créer la demande de retrait (Statut "En attente")
-      await addDoc(collection(db, "transactions"), {
-        userId: user.uid,
+      // ÉTAPE A : Créer la demande
+      const { error: trxError } = await supabase.from('transactions').insert([{
+        user_id: user.id,
         type: "withdrawal",
         title: `Retrait vers ${paymentMethod}`,
         amount: withdrawAmount,
         method: paymentMethod,
-        status: "En attente", // ⏳ L'admin devra valider ça plus tard
-        createdAt: serverTimestamp()
-      });
+        status: "En attente"
+      }]);
 
-      // ÉTAPE B : Déduire l'argent immédiatement pour éviter le double-retrait
-      const userRef = doc(db, "users", user.uid);
-      await updateDoc(userRef, {
-        balance: increment(-withdrawAmount) // 🔥 On met un "moins" pour déduire
-      });
+      if (trxError) throw trxError;
 
-      alert(`⏳ Demande de retrait de ${amount} F envoyée. Elle sera traitée sous 24h.`);
+      // ÉTAPE B : Déduire l'argent
+      const newBalance = solde - withdrawAmount;
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ balance: newBalance })
+        .eq('id', user.id);
+
+      if (updateError) throw updateError;
+
+      alert(`⏳ Demande de retrait de ${amount} F envoyée.`);
       setIsWithdrawOpen(false);
       setAmount("");
+      window.location.reload();
     } catch (error) {
       console.error("Erreur de retrait :", error);
       alert("❌ Une erreur est survenue.");
@@ -115,10 +133,10 @@ export default function WalletPage({ wallet, user }) {
     }
   };
 
-  // Fonction pour formater les dates Firebase
-  const formatDate = (timestamp) => {
-    if (!timestamp) return "À l'instant";
-    return timestamp.toDate().toLocaleDateString('fr-FR', { 
+  // Fonction pour formater les dates Supabase (ISO string)
+  const formatDate = (isoString) => {
+    if (!isoString) return "À l'instant";
+    return new Date(isoString).toLocaleDateString('fr-FR', { 
       day: 'numeric', month: 'short', year: 'numeric' 
     });
   };
@@ -172,7 +190,7 @@ export default function WalletPage({ wallet, user }) {
                 <div>
                   <p className="text-[8px] uppercase tracking-widest text-slate-400 mb-1">Titulaire</p>
                   <p className="text-xs font-black uppercase tracking-widest truncate max-w-[150px]">
-                    {user?.displayName || "Ambassadeur"}
+                    {wallet?.full_name || "Gérant Rynek"}
                   </p>
                 </div>
                 <div className="flex gap-1">
@@ -222,13 +240,13 @@ export default function WalletPage({ wallet, user }) {
                             <div className="flex flex-col">
                               <span className="font-black text-slate-900 uppercase text-xs tracking-tight">{trx.title}</span>
                               <span className="text-[10px] text-slate-400 font-bold tracking-widest mt-0.5">
-                                {formatDate(trx.createdAt)} • {trx.method}
+                                {formatDate(trx.created_at)} • {trx.method}
                               </span>
                             </div>
                           </div>
                         </td>
                         <td className="p-6 text-center hidden md:table-cell">
-                          <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest">{trx.id.slice(0, 8)}...</span>
+                          <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest">{trx.id.toString().slice(0, 8)}...</span>
                         </td>
                         <td className="p-6 text-center">
                           <span className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border

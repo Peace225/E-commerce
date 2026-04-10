@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import * as Icons from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { supabase } from "../../utils/supabaseClient"; // 🔄 Import Supabase
 
 export default function AdminCommissions() {
   const [commissions, setCommissions] = useState([]);
@@ -10,15 +11,32 @@ export default function AdminCommissions() {
 
   // 🔄 Synchronisation de TOUTES les commissions pour les statistiques
   useEffect(() => {
-    const q = query(collection(db, "commissions"), orderBy("createdAt", "desc"));
+    const fetchCommissions = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('commissions')
+          .select('*')
+          .order('created_at', { ascending: false }); // Supabase utilise created_at
+
+        if (error) throw error;
+        if (data) setCommissions(data);
+      } catch (error) {
+        console.error("Erreur chargement des commissions:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCommissions();
+
+    // ⚡ Souscription Temps Réel
+    const channel = supabase.channel('admin-commissions-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'commissions' }, () => {
+        fetchCommissions();
+      })
+      .subscribe();
     
-    const unsub = onSnapshot(q, (snap) => {
-      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setCommissions(docs);
-      setLoading(false);
-    });
-    
-    return () => unsub();
+    return () => supabase.removeChannel(channel);
   }, []);
 
   // 🔍 Filtrage logique
@@ -31,7 +49,7 @@ export default function AdminCommissions() {
     totalTransactions: commissions.length
   };
 
-  // 🚀 FONCTION : PAYER TOUT LE MONDE (BATCH UPDATE)
+  // 🚀 FONCTION : PAYER TOUT LE MONDE (Remplacement du writeBatch Firebase)
   const handleSolderTout = async () => {
     const pendingCommissions = commissions.filter(c => (c.statut || "En attente") === "En attente");
     
@@ -39,34 +57,63 @@ export default function AdminCommissions() {
     if (!window.confirm(`Confirmez-vous le paiement global de ${stats.aReverser.toLocaleString()} F pour ${pendingCommissions.length} transactions ?\n\nCela créditera automatiquement les portefeuilles des ambassadeurs.`)) return;
 
     setIsProcessing(true);
-    const batch = writeBatch(db);
 
     try {
-      pendingCommissions.forEach((c) => {
+      // Boucle sécurisée pour traiter chaque transaction
+      for (const c of pendingCommissions) {
         // 1. Mettre à jour le statut de la commission
-        const commissionRef = doc(db, "commissions", c.id);
-        batch.update(commissionRef, { 
-          statut: "Payé",
-          payeLe: new Date() 
-        });
+        const { error: commError } = await supabase
+          .from('commissions')
+          .update({ 
+            statut: "Payé",
+            paye_le: new Date().toISOString() 
+          })
+          .eq('id', c.id);
 
-        // 2. Créditer le portefeuille de l'utilisateur (si l'UID est stocké)
-        if (c.utilisateurUid) {
-          const userRef = doc(db, "users", c.utilisateurUid);
-          batch.update(userRef, { balance: increment(c.montant) });
+        if (commError) throw commError;
+
+        // 2. Créditer le portefeuille de l'utilisateur (Gestion des Noms Firebase vs Supabase)
+        const userId = c.utilisateur_uid || c.utilisateurUid || c.utilisateur_id;
+        
+        if (userId) {
+          // A. Récupérer le solde actuel (remplace le increment natif de Firebase)
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('balance')
+            .eq('id', userId)
+            .single();
+
+          if (!userError && userData) {
+            const currentBalance = userData.balance || 0;
+            const newBalance = currentBalance + (c.montant || 0);
+
+            // B. Mettre à jour avec le nouveau solde
+            await supabase
+              .from('users')
+              .update({ balance: newBalance })
+              .eq('id', userId);
+          }
         }
-      });
+      }
 
-      await batch.commit();
       alert("✅ Reversements effectués avec succès !");
       setActiveTab("Payé"); // Bascule sur l'historique après paiement
+      
     } catch (error) {
       console.error("Erreur lors du paiement global:", error);
-      alert("❌ Erreur lors du traitement.");
+      alert("❌ Erreur lors du traitement. Consultez les logs.");
     } finally {
       setIsProcessing(false);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Icons.Loader2 className="animate-spin text-orange-500" size={40} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-10 pb-10">
@@ -162,50 +209,57 @@ export default function AdminCommissions() {
             </thead>
             <tbody className="divide-y divide-white/5">
               <AnimatePresence mode="popLayout">
-                {filteredCommissions.map((c, i) => (
-                  <motion.tr 
-                    initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, x: -20 }} transition={{ delay: i * 0.05 }}
-                    key={c.id} className="hover:bg-white/[0.02] transition-colors group"
-                  >
-                    <td className="p-8">
-                      <div className="flex items-center gap-4">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${activeTab === 'Payé' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-orange-500/10 text-orange-500'}`}>
-                          <Icons.UserCheck size={18} />
+                {filteredCommissions.map((c, i) => {
+                  // ⏱️ Parsing de la date (Supabase renvoie une string ISO)
+                  const dateString = c.created_at || c.createdAt;
+                  const dateObj = dateString ? new Date(dateString) : new Date();
+
+                  return (
+                    <motion.tr 
+                      initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, x: -20 }} transition={{ delay: i * 0.05 }}
+                      key={c.id} className="hover:bg-white/[0.02] transition-colors group"
+                    >
+                      <td className="p-8">
+                        <div className="flex items-center gap-4">
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${activeTab === 'Payé' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-orange-500/10 text-orange-500'}`}>
+                            <Icons.UserCheck size={18} />
+                          </div>
+                          <div className="flex flex-col">
+                            {/* Securité pour snake_case ou camelCase */}
+                            <span className="font-black text-white text-xs uppercase tracking-tight">{c.utilisateur_email || c.utilisateurEmail}</span>
+                            <span className="text-[9px] text-slate-500 font-bold italic">Réf: {c.id.slice(0, 8)}</span>
+                          </div>
                         </div>
+                      </td>
+                      <td className="p-8">
                         <div className="flex flex-col">
-                          <span className="font-black text-white text-xs uppercase tracking-tight">{c.utilisateurEmail}</span>
-                          <span className="text-[9px] text-slate-500 font-bold italic">Réf: {c.id.slice(0, 8)}</span>
+                          <span className="text-xs font-bold text-slate-300">{c.filleul_email || c.filleulEmail}</span>
+                          <span className="text-[9px] text-slate-600 font-black uppercase tracking-widest mt-1">Achat validé</span>
                         </div>
-                      </div>
-                    </td>
-                    <td className="p-8">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-bold text-slate-300">{c.filleulEmail}</span>
-                        <span className="text-[9px] text-slate-600 font-black uppercase tracking-widest mt-1">Achat validé</span>
-                      </div>
-                    </td>
-                    <td className="p-8 text-center">
-                      <span className="px-3 py-1 bg-white/5 border border-white/10 rounded-lg text-[10px] font-black text-slate-400 uppercase tracking-tighter">
-                        Lvl {c.niveau || 1}
-                      </span>
-                    </td>
-                    <td className="p-8 text-center">
-                      <span className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">
-                        {c.createdAt?.toDate().toLocaleDateString('fr-FR')}
-                      </span>
-                    </td>
-                    <td className="p-8 text-right">
-                      <div className="flex flex-col items-end">
-                        <span className={`font-black text-sm ${activeTab === 'Payé' ? 'text-emerald-400' : 'text-orange-400'}`}>
-                          +{c.montant?.toLocaleString()} F
+                      </td>
+                      <td className="p-8 text-center">
+                        <span className="px-3 py-1 bg-white/5 border border-white/10 rounded-lg text-[10px] font-black text-slate-400 uppercase tracking-tighter">
+                          Lvl {c.niveau || 1}
                         </span>
-                        <span className="text-[8px] text-slate-600 font-black uppercase tracking-widest mt-1">
-                          {activeTab}
+                      </td>
+                      <td className="p-8 text-center">
+                        <span className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">
+                          {dateObj.toLocaleDateString('fr-FR')}
                         </span>
-                      </div>
-                    </td>
-                  </motion.tr>
-                ))}
+                      </td>
+                      <td className="p-8 text-right">
+                        <div className="flex flex-col items-end">
+                          <span className={`font-black text-sm ${activeTab === 'Payé' ? 'text-emerald-400' : 'text-orange-400'}`}>
+                            +{c.montant?.toLocaleString()} F
+                          </span>
+                          <span className="text-[8px] text-slate-600 font-black uppercase tracking-widest mt-1">
+                            {activeTab}
+                          </span>
+                        </div>
+                      </td>
+                    </motion.tr>
+                  );
+                })}
               </AnimatePresence>
             </tbody>
           </table>

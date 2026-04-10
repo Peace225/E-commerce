@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { supabase } from "../utils/supabaseClient"; // 🔄 Import de ton client Supabase
+import { supabase } from "../utils/supabaseClient"; 
 import { useNavigate, Link } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 import AlertMessage from "../components/AlertMessage";
@@ -14,46 +14,51 @@ export default function Login() {
 
   const navigate = useNavigate();
 
-  // 🔐 Synchronisation Backend & Redirection (Adapté pour Supabase)
-  const syncAndRedirect = async (session) => {
+  // 🎯 LOGIQUE DE REDIRECTION CORRIGÉE (Table 'users')
+  const handleUserRedirection = async (user) => {
     try {
-      const { user } = session;
-      const token = session.access_token; // 🔄 JWT Supabase au lieu du token Firebase
+      // 1. On pointe sur 'users' car 'profiles' est vide chez toi
+      const { data: userData, error } = await supabase
+        .from('users') 
+        .select('role, is_admin, is_banned')
+        .eq('id', user.id)
+        .maybeSingle(); // Plus robuste que .single()
 
-      const response = await fetch('http://localhost:5000/api/auth/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token,
-          email: user.email,
-          displayName: user.user_metadata?.full_name || user.email.split('@')[0],
-          photoURL: user.user_metadata?.avatar_url
-        })
-      });
-
-      const result = await response.json();
-
-      if (response.ok) {
-        const userData = result.user;
-        
-        // 🎯 Redirection basée sur le rôle
-        if (userData.role === "admin") {
-          navigate("/admin");
-        } else if (userData.role === "vendeur") {
-          navigate("/dashboard");
-        } else {
-          navigate("/mon-compte");
-        }
-      } else {
-        setAlert(result.error || "Erreur de synchronisation.");
+      if (error) {
+        console.error("Erreur Supabase:", error);
+        setAlert("Erreur de synchronisation avec la table users.");
+        return;
       }
+
+      if (!userData) {
+        setAlert("Compte introuvable dans la base de données.");
+        return;
+      }
+
+      // 2. Sécurité : Vérifier si le compte est banni
+      if (userData.is_banned) {
+        setAlert("Votre compte a été suspendu pour non-respect des CGU.");
+        await supabase.auth.signOut();
+        return;
+      }
+
+      // 3. AIGUILLAGE PRÉCIS
+      // On vérifie le flag is_admin OU le rôle 'admin'
+      if (userData.is_admin === true || userData.role === "admin") {
+        console.log("Accès SuperAdmin détecté 🚀");
+        navigate("/admin");
+      } else if (userData.role === "vendeur") {
+        navigate("/dashboard");
+      } else {
+        navigate("/mon-compte");
+      }
+
     } catch (error) {
-      console.error("Erreur Auth Backend:", error);
-      setAlert("Le serveur Rynek est injoignable.");
+      console.error("Erreur Redirection:", error.message);
+      setAlert("Erreur système lors de la redirection.");
     }
   };
 
-  // 📧 Connexion Email/Password
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -67,26 +72,25 @@ export default function Login() {
 
       if (error) throw error;
 
-      if (data.session) {
-        await syncAndRedirect(data.session);
+      if (data.user) {
+        await handleUserRedirection(data.user);
       }
     } catch (error) {
       setAlert(error.message === "Invalid login credentials" 
         ? "Email ou mot de passe incorrect." 
-        : "Une erreur est survenue lors de la connexion.");
+        : "Erreur de connexion au service Auth.");
     } finally {
       setLoading(false);
     }
   };
 
-  // 🌐 Connexion Google (OAuth Supabase)
   const handleGoogleLogin = async () => {
     setLoading(true);
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin + "/mon-compte" // 🔄 URL de retour après Google
+          redirectTo: window.location.origin + "/mon-compte" 
         }
       });
       if (error) throw error;
@@ -100,83 +104,69 @@ export default function Login() {
     <>
       <Helmet>
         <title>Connexion - Rynek</title>
-        <meta name="description" content="Connectez-vous à Rynek pour gérer vos achats et ventes." />
       </Helmet>
 
       <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 py-8 font-['Inter',sans-serif]">
         <div className="w-full max-w-md">
           {alert && <AlertMessage message={alert} onClose={() => setAlert("")} />}
 
-          <form onSubmit={handleLogin} className="bg-white shadow-2xl p-6 sm:p-8 rounded-[2.5rem] space-y-6 border border-gray-100">
+          <form onSubmit={handleLogin} className="bg-white shadow-2xl p-8 rounded-[2.5rem] space-y-6 border border-gray-100">
             <div className="text-center space-y-2 mb-6">
-               <h1 className="text-2xl sm:text-3xl font-black text-gray-900 uppercase italic tracking-tighter">Rynek</h1>
-               <p className="text-gray-400 text-[10px] font-bold uppercase tracking-widest italic">Bon retour parmi nous</p>
+               <h1 className="text-3xl font-black text-slate-900 uppercase italic tracking-tighter">Rynek</h1>
+               <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest italic opacity-60">Accès Sécurisé</p>
             </div>
 
             <div className="space-y-4">
-              <input
-                type="email"
-                required
-                placeholder="Adresse Email"
-                className="w-full border-2 border-gray-50 p-4 rounded-2xl focus:ring-4 focus:ring-orange-500/10 focus:border-orange-500 transition-all outline-none font-medium text-sm"
-                onChange={(e) => setEmail(e.target.value)}
-              />
+              <div className="relative group">
+                <Icons.Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-orange-500 transition-colors" size={18} />
+                <input
+                  type="email"
+                  required
+                  placeholder="Adresse Email"
+                  className="w-full border-2 border-slate-50 p-4 pl-12 rounded-2xl focus:ring-4 focus:ring-orange-500/10 focus:border-orange-500 transition-all outline-none font-medium text-sm"
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
 
-              <div className="relative">
+              <div className="relative group">
+                <Icons.Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-orange-500 transition-colors" size={18} />
                 <input
                   type={showPassword ? "text" : "password"}
                   required
                   placeholder="Mot de passe"
-                  className="w-full border-2 border-gray-50 p-4 rounded-2xl focus:ring-4 focus:ring-orange-500/10 focus:border-orange-500 transition-all outline-none font-medium text-sm"
+                  className="w-full border-2 border-slate-50 p-4 pl-12 rounded-2xl focus:ring-4 focus:ring-orange-500/10 focus:border-orange-500 transition-all outline-none font-medium text-sm"
                   onChange={(e) => setPassword(e.target.value)}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-600"
                 >
-                  {showPassword ? <Icons.EyeOff size={20} /> : <Icons.Eye size={20} />}
+                  {showPassword ? <Icons.EyeOff size={18} /> : <Icons.Eye size={18} />}
                 </button>
               </div>
-            </div>
-
-            <div className="flex justify-end">
-              <Link to="/mot-de-passe-oublie" className="text-[10px] font-bold text-gray-400 hover:text-orange-500 uppercase tracking-widest transition-colors">
-                Besoin d'aide ?
-              </Link>
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-orange-600 hover:bg-orange-700 text-white py-5 rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl shadow-orange-600/20 transition-all active:scale-95 disabled:opacity-50"
+              className="w-full bg-slate-900 hover:bg-orange-600 text-white py-5 rounded-2xl font-black uppercase tracking-[0.2em] text-[10px] shadow-xl transition-all active:scale-95 disabled:opacity-50"
             >
               {loading ? "Vérification..." : "Se connecter"}
             </button>
-
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-px bg-gray-100"></div>
-              <span className="text-[10px] font-black text-gray-400">OU</span>
-              <div className="flex-1 h-px bg-gray-100"></div>
-            </div>
 
             <button
               type="button"
               onClick={handleGoogleLogin}
               disabled={loading}
-              className="w-full flex items-center justify-center gap-4 bg-gray-50 hover:bg-gray-100 border-2 border-gray-100 py-4 rounded-2xl transition-all font-bold text-sm text-gray-700"
+              className="w-full flex items-center justify-center gap-4 bg-white border-2 border-slate-100 py-4 rounded-2xl transition-all font-bold text-xs text-slate-700"
             >
-              <svg viewBox="0 0 48 48" width="20" height="20">
-                <path fill="#EA4335" d="M24 9.5c3.9 0 7.4 1.4 10.1 3.7l7.5-7.5C37.3 2.2 30.9 0 24 0 14.6 0 6.4 5.4 2.5 13.3l8.7 6.8C13.2 13.4 18.2 9.5 24 9.5z"/>
-                <path fill="#34A853" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.6H24v9h12.4c-.5 2.7-2 5-4.2 6.6l6.5 5.1c3.8-3.5 6-8.6 6-16.1z"/>
-                <path fill="#4A90E2" d="M11.2 28.1c-.5-1.5-.8-3.1-.8-4.6s.3-3.1.8-4.6l-8.7-6.8C.9 15.5 0 19.6 0 24s.9 8.5 2.5 11.9l8.7-6.8z"/>
-                <path fill="#FBBC05" d="M24 48c6.9 0 12.7-2.3 16.9-6.3l-6.5-5.1c-2 1.4-4.6 2.2-10.4 2.2-5.8 0-10.8-3.9-12.8-9.3l-8.7 6.8C6.4 42.6 14.6 48 24 48z"/>
-              </svg>
+              <Icons.Globe size={18} className="text-slate-400" />
               Continuer avec Google
             </button>
 
-            <p className="text-center text-xs text-gray-500 font-bold uppercase pt-4">
-              Pas encore membre ? <Link to="/register" className="text-orange-600 hover:underline">Créer un compte</Link>
+            <p className="text-center text-[10px] text-slate-400 font-bold uppercase pt-2">
+              Nouveau ? <Link to="/register" className="text-orange-600">Créer mon compte</Link>
             </p>
           </form>
         </div>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import * as Icons from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { supabase } from "../../utils/supabaseClient"; // 🔄 Import Supabase ajouté
 
 export default function AdminCommandes() {
   const [commandes, setCommandes] = useState([]);
@@ -8,14 +9,34 @@ export default function AdminCommandes() {
   const [filter, setFilter] = useState("Toutes");
   const [searchTerm, setSearchTerm] = useState("");
 
-  // 🔄 Synchronisation en temps réel avec Firestore
+  // 🔄 Synchronisation en temps réel avec Supabase
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "commandes"), (snap) => {
-      const cmds = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setCommandes(cmds.sort((a, b) => b.createdAt?.seconds - a.createdAt?.seconds));
-      setLoading(false);
-    });
-    return () => unsub();
+    const fetchCommandes = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('commandes')
+          .select('*')
+          .order('created_at', { ascending: false }); // Supabase utilise généralement created_at
+
+        if (error) throw error;
+        if (data) setCommandes(data);
+      } catch (error) {
+        console.error("Erreur chargement des commandes:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCommandes();
+
+    // ⚡ Souscription temps réel (remplace onSnapshot)
+    const channel = supabase.channel('admin-commandes-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'commandes' }, () => {
+        fetchCommandes();
+      })
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
   }, []);
 
   // ⚙️ Action : Mettre à jour le statut d'une commande
@@ -27,10 +48,16 @@ export default function AdminCommandes() {
 
     if (window.confirm(messages[newStatus])) {
       try {
-        await updateDoc(doc(db, "commandes", orderId), { 
-          statut: newStatus,
-          updatedAt: serverTimestamp() 
-        });
+        // Mise à jour via Supabase
+        const { error } = await supabase
+          .from('commandes')
+          .update({ 
+            statut: newStatus,
+            updated_at: new Date().toISOString() // Remplacer serverTimestamp()
+          })
+          .eq('id', orderId);
+
+        if (error) throw error;
       } catch (error) {
         console.error("Erreur mise à jour statut:", error);
       }
@@ -45,9 +72,13 @@ export default function AdminCommandes() {
   };
 
   // 🔍 Filtrage combiné (Recherche + Statut)
+  // Note : J'utilise (c.produit_nom || c.produitNom) pour être compatible avec les deux nomenclatures
   const filteredCommandes = commandes.filter(c => {
-    const matchesSearch = c.produitNom?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          c.clientEmail?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const productName = c.produit_nom || c.produitNom || "";
+    const clientEmail = c.client_email || c.clientEmail || "";
+    
+    const matchesSearch = productName.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          clientEmail.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           c.id?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = filter === "Toutes" || c.statut === filter;
     return matchesSearch && matchesStatus;
@@ -61,6 +92,14 @@ export default function AdminCommandes() {
     caGenere: commandes.filter(c => c.statut === "Livrée" || c.statut === "Payée")
                        .reduce((acc, c) => acc + (c.montant || 0), 0)
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Icons.Loader2 className="animate-spin text-blue-500" size={40} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-10 pb-10">
@@ -108,7 +147,7 @@ export default function AdminCommandes() {
           </div>
 
           {/* Filtres de statuts */}
-          <div className="flex gap-2 bg-[#0f172a] p-1.5 rounded-2xl border border-white/5 shadow-inner overflow-x-auto no-scrollbar">
+          <div className="flex gap-2 bg-[#0f172a] p-1.5 rounded-2xl border border-white/5 shadow-inner overflow-x-auto custom-scrollbar">
             {["Toutes", "En attente", "Payée", "Livrée", "Annulée"].map((s) => (
               <button
                 key={s}
@@ -138,62 +177,70 @@ export default function AdminCommandes() {
             </thead>
             <tbody className="divide-y divide-white/5">
               <AnimatePresence>
-                {filteredCommandes.map((c, i) => (
-                  <motion.tr 
-                    initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-                    key={c.id} className="hover:bg-white/[0.02] transition-colors group"
-                  >
-                    <td className="p-8">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-slate-800 rounded-2xl flex items-center justify-center text-slate-400 group-hover:bg-red-600 group-hover:text-white transition-all shadow-lg">
-                          <Icons.ShoppingBag size={20} />
+                {filteredCommandes.map((c, i) => {
+                  // ⏱️ Parsing de la date (Supabase renvoie une string ISO, Firebase renvoyait un objet)
+                  const dateString = c.created_at || c.createdAt;
+                  const dateObj = dateString ? new Date(dateString) : new Date();
+
+                  return (
+                    <motion.tr 
+                      initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
+                      key={c.id} className="hover:bg-white/[0.02] transition-colors group"
+                    >
+                      <td className="p-8">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 bg-slate-800 rounded-2xl flex items-center justify-center text-slate-400 group-hover:bg-red-600 group-hover:text-white transition-all shadow-lg">
+                            <Icons.ShoppingBag size={20} />
+                          </div>
+                          <div className="flex flex-col min-w-0">
+                            <span className="font-black text-white text-xs uppercase tracking-tight truncate">
+                              {c.produit_nom || c.produitNom || "Produit Inconnu"}
+                            </span>
+                            <span className="text-[9px] font-mono text-slate-500 mt-1 uppercase">ID: {c.id.slice(0, 8)}</span>
+                          </div>
                         </div>
-                        <div className="flex flex-col min-w-0">
-                          <span className="font-black text-white text-xs uppercase tracking-tight truncate">{c.produitNom}</span>
-                          <span className="text-[9px] font-mono text-slate-500 mt-1 uppercase">ID: {c.id.slice(0, 8)}</span>
+                      </td>
+                      <td className="p-8">
+                        <div className="flex flex-col">
+                          <span className="text-sm font-bold text-slate-300">{c.client_email || c.clientEmail}</span>
+                          <span className="text-[10px] text-slate-500 font-bold italic mt-1">
+                            {dateObj.toLocaleDateString('fr-FR')} à {dateObj.toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'})}
+                          </span>
                         </div>
-                      </div>
-                    </td>
-                    <td className="p-8">
-                      <div className="flex flex-col">
-                        <span className="text-sm font-bold text-slate-300">{c.clientEmail}</span>
-                        <span className="text-[10px] text-slate-500 font-bold italic mt-1">
-                          {c.createdAt?.toDate().toLocaleDateString('fr-FR')} à {c.createdAt?.toDate().toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'})}
+                      </td>
+                      <td className="p-8 text-center">
+                        <span className="text-emerald-400 font-black text-sm">{(c.montant || 0).toLocaleString()} F</span>
+                      </td>
+                      <td className="p-8 text-center">
+                        <span className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border ${statusColors[c.statut] || 'bg-slate-500/10 text-slate-500'}`}>
+                          {c.statut || "Inconnu"}
                         </span>
-                      </div>
-                    </td>
-                    <td className="p-8 text-center">
-                      <span className="text-emerald-400 font-black text-sm">{(c.montant || 0).toLocaleString()} F</span>
-                    </td>
-                    <td className="p-8 text-center">
-                      <span className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border ${statusColors[c.statut] || 'bg-slate-500/10 text-slate-500'}`}>
-                        {c.statut}
-                      </span>
-                    </td>
-                    <td className="p-8 text-right">
-                      <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {c.statut !== "Livrée" && c.statut !== "Annulée" && (
-                          <button 
-                            onClick={() => updateStatus(c.id, "Livrée")}
-                            className="p-3 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-500 hover:text-white rounded-xl transition-all"
-                            title="Valider la livraison"
-                          >
-                            <Icons.CheckCircle2 size={16} />
-                          </button>
-                        )}
-                        {c.statut !== "Annulée" && (
-                          <button 
-                            onClick={() => updateStatus(c.id, "Annulée")}
-                            className="p-3 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white rounded-xl transition-all"
-                            title="Annuler la commande"
-                          >
-                            <Icons.XCircle size={16} />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </motion.tr>
-                ))}
+                      </td>
+                      <td className="p-8 text-right">
+                        <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {c.statut !== "Livrée" && c.statut !== "Annulée" && (
+                            <button 
+                              onClick={() => updateStatus(c.id, "Livrée")}
+                              className="p-3 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-500 hover:text-white rounded-xl transition-all"
+                              title="Valider la livraison"
+                            >
+                              <Icons.CheckCircle2 size={16} />
+                            </button>
+                          )}
+                          {c.statut !== "Annulée" && (
+                            <button 
+                              onClick={() => updateStatus(c.id, "Annulée")}
+                              className="p-3 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white rounded-xl transition-all"
+                              title="Annuler la commande"
+                            >
+                              <Icons.XCircle size={16} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </motion.tr>
+                  );
+                })}
               </AnimatePresence>
             </tbody>
           </table>

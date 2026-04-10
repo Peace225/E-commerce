@@ -1,11 +1,9 @@
 import { useState, useEffect } from "react";
-
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useAuth } from "../../contexte/AuthContext";
+import { supabase } from "../../utils/supabaseClient"; // 🔄 Bye bye Firebase !
 import * as Icons from "lucide-react";
 import { motion } from "framer-motion";
 
-// 📝 On ajoute la prop "productToEdit" pour savoir si on crée ou on modifie
 export default function AdminAjouterProduit({ onClose, onCreated, productToEdit = null }) {
   const { user } = useAuth();
   const isEditing = !!productToEdit;
@@ -26,11 +24,11 @@ export default function AdminAjouterProduit({ onClose, onCreated, productToEdit 
   useEffect(() => {
     if (isEditing) {
       setFormData({
-        nom: productToEdit.nom,
-        description: productToEdit.description,
-        prix: productToEdit.prix,
+        nom: productToEdit.nom || "",
+        description: productToEdit.description || "",
+        prix: productToEdit.prix || "",
         categorie: productToEdit.categorie || "Téléphones",
-        image: null, // On ne stocke pas le fichier ici, juste l'URL pour l'aperçu
+        image: null, 
       });
       setPreview(productToEdit.image);
     }
@@ -60,35 +58,59 @@ export default function AdminAjouterProduit({ onClose, onCreated, productToEdit 
     try {
       let imageUrl = isEditing ? productToEdit.image : "";
 
-      // Si une nouvelle image est sélectionnée, on l'upload
+      // 🖼️ GESTION DE L'IMAGE AVEC SUPABASE STORAGE
       if (formData.image) {
-        const imageRef = ref(storage, `produits/${Date.now()}_${formData.image.name}`);
-        await uploadBytes(imageRef, formData.image);
-        imageUrl = await getDownloadURL(imageRef);
+        // Nettoyage du nom de fichier pour éviter les bugs
+        const fileExt = formData.image.name.split('.').pop();
+        const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+        
+        // ⚠️ Assure-toi d'avoir créé un bucket nommé "produits" dans Supabase Storage
+        const { error: uploadError } = await supabase.storage
+          .from('produits') 
+          .upload(fileName, formData.image);
+
+        if (uploadError) throw uploadError;
+
+        // Récupération de l'URL publique
+        const { data: publicUrlData } = supabase.storage
+          .from('produits')
+          .getPublicUrl(fileName);
+
+        imageUrl = publicUrlData.publicUrl;
       }
 
+      // 📦 PRÉPARATION DES DONNÉES
       const productData = {
         nom: formData.nom,
         description: formData.description,
         prix: Number(formData.prix),
         categorie: formData.categorie,
         image: imageUrl,
-        updatedAt: serverTimestamp(),
+        updated_at: new Date().toISOString(), // Standardisation date Supabase
       };
 
       if (isEditing) {
         // ✏️ UPDATE : Mise à jour du produit existant
-        const docRef = doc(db, "produits", productToEdit.id);
-        await updateDoc(docRef, productData);
+        const { error: updateError } = await supabase
+          .from('produits')
+          .update(productData)
+          .eq('id', productToEdit.id);
+
+        if (updateError) throw updateError;
         setSuccess("✅ Produit mis à jour !");
+
       } else {
         // ➕ ADD : Création d'un nouveau produit
-        await addDoc(collection(db, "produits"), {
-          ...productData,
-          createdAt: serverTimestamp(),
-          uid: user?.uid || null,
-          vendeur: user?.displayName || "Admin",
-        });
+        const { error: insertError } = await supabase
+          .from('produits')
+          .insert([{
+            ...productData,
+            created_at: new Date().toISOString(),
+            uid: user?.id || null, // Supabase utilise 'id', Firebase utilisait 'uid'
+            vendeur: user?.user_metadata?.full_name || "Admin",
+          }]);
+
+        if (insertError) throw insertError;
         setSuccess("✅ Produit ajouté avec succès !");
       }
 
@@ -96,7 +118,9 @@ export default function AdminAjouterProduit({ onClose, onCreated, productToEdit 
         if (onCreated) onCreated();
         onClose();
       }, 1500);
+
     } catch (error) {
+      console.error("Erreur d'opération produit:", error);
       setSuccess("❌ Erreur lors de l'opération");
     } finally {
       setUploading(false);
@@ -108,35 +132,38 @@ export default function AdminAjouterProduit({ onClose, onCreated, productToEdit 
       <motion.div 
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-2xl bg-white rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col md:flex-row max-h-[90vh]"
+        exit={{ opacity: 0, scale: 0.9 }}
+        className="w-full max-w-2xl bg-[#0f172a] border border-white/10 rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col md:flex-row max-h-[90vh]"
       >
         
-        <div className="w-full md:w-5/12 bg-slate-50 border-r border-slate-100 p-8 flex flex-col items-center justify-center relative">
-          <p className="absolute top-8 left-8 text-[10px] font-black uppercase text-slate-400 tracking-widest">Aperçu Visuel</p>
-          <div className="w-full aspect-square rounded-[2rem] border-2 border-dashed border-slate-200 flex items-center justify-center overflow-hidden bg-white shadow-inner">
+        {/* COLONNE GAUCHE : IMAGE (Adapté au thème sombre Admin) */}
+        <div className="w-full md:w-5/12 bg-white/5 border-r border-white/5 p-8 flex flex-col items-center justify-center relative">
+          <p className="absolute top-8 left-8 text-[10px] font-black uppercase text-slate-500 tracking-widest">Aperçu Visuel</p>
+          <div className="w-full aspect-square rounded-[2rem] border-2 border-dashed border-white/10 flex items-center justify-center overflow-hidden bg-black/20 shadow-inner">
             {preview ? (
               <img src={preview} alt="Aperçu" className="w-full h-full object-cover" />
             ) : (
-              <Icons.ImagePlus size={48} className="text-slate-200" />
+              <Icons.ImagePlus size={48} className="text-slate-600" />
             )}
           </div>
-          <label className="mt-6 cursor-pointer bg-slate-900 text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-orange-500 transition-all">
+          <label className="mt-6 cursor-pointer bg-red-600 text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-500 shadow-lg shadow-red-600/20 transition-all">
             {isEditing ? "Changer la photo" : "Ajouter une photo"}
             <input type="file" accept="image/*" onChange={handleChange} className="hidden" />
           </label>
         </div>
 
-        <div className="flex-1 p-8 md:p-10 overflow-y-auto no-scrollbar">
+        {/* COLONNE DROITE : FORMULAIRE */}
+        <div className="flex-1 p-8 md:p-10 overflow-y-auto custom-scrollbar">
           <div className="flex justify-between items-start mb-8">
             <div>
-              <h2 className="text-2xl font-black uppercase tracking-tighter italic">
+              <h2 className="text-2xl font-black uppercase tracking-tighter italic text-white">
                 {isEditing ? "Modifier" : "Nouveau"} Produit
               </h2>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                {isEditing ? "Mise à jour des infos" : "Mise en ligne catalogue"}
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                {isEditing ? "Mise à jour du catalogue" : "Mise en ligne catalogue"}
               </p>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-red-50 hover:text-red-500 rounded-xl transition-colors">
+            <button onClick={onClose} className="p-2 text-slate-500 hover:bg-white/5 hover:text-white rounded-xl transition-colors">
               <Icons.X size={20} />
             </button>
           </div>
@@ -147,7 +174,7 @@ export default function AdminAjouterProduit({ onClose, onCreated, productToEdit 
               value={formData.nom}
               onChange={handleChange}
               placeholder="Nom du produit"
-              className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-4 text-sm font-bold focus:border-orange-500 outline-none"
+              className="w-full bg-[#020617] border border-white/10 rounded-2xl py-4 px-4 text-sm font-bold text-white focus:border-red-500 outline-none transition-colors"
               required
             />
 
@@ -158,8 +185,8 @@ export default function AdminAjouterProduit({ onClose, onCreated, productToEdit 
                   type="number"
                   value={formData.prix}
                   onChange={handleChange}
-                  placeholder="Prix"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-4 text-sm font-black focus:border-orange-500 outline-none"
+                  placeholder="Prix (F CFA)"
+                  className="w-full bg-[#020617] border border-white/10 rounded-2xl py-4 px-4 text-sm font-black text-white focus:border-red-500 outline-none transition-colors"
                   required
                 />
               </div>
@@ -167,7 +194,7 @@ export default function AdminAjouterProduit({ onClose, onCreated, productToEdit 
                 name="categorie"
                 value={formData.categorie}
                 onChange={handleChange}
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-4 text-xs font-bold text-slate-600 outline-none"
+                className="w-full bg-[#020617] border border-white/10 rounded-2xl py-4 px-4 text-xs font-bold text-slate-300 focus:border-red-500 outline-none transition-colors"
               >
                 {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
               </select>
@@ -178,15 +205,15 @@ export default function AdminAjouterProduit({ onClose, onCreated, productToEdit 
               rows="3"
               value={formData.description}
               onChange={handleChange}
-              placeholder="Description..."
-              className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-4 px-4 text-sm font-medium focus:border-orange-500 outline-none resize-none"
+              placeholder="Description détaillée..."
+              className="w-full bg-[#020617] border border-white/10 rounded-2xl py-4 px-4 text-sm font-medium text-white focus:border-red-500 outline-none resize-none transition-colors custom-scrollbar"
               required
             />
 
             <button
               type="submit"
               disabled={uploading}
-              className="w-full bg-[#0f172a] hover:bg-orange-600 text-white py-5 rounded-2xl font-black uppercase tracking-widest text-xs transition-all flex justify-center items-center gap-3"
+              className="w-full bg-white text-slate-900 hover:bg-red-600 hover:text-white py-5 rounded-2xl font-black uppercase tracking-widest text-xs transition-all flex justify-center items-center gap-3 disabled:opacity-50"
             >
               {uploading ? (
                 <Icons.Loader2 className="animate-spin" size={18} />
@@ -197,7 +224,11 @@ export default function AdminAjouterProduit({ onClose, onCreated, productToEdit 
             </button>
           </form>
           
-          {success && <p className="mt-4 text-center text-[10px] font-black uppercase text-emerald-500 tracking-widest">{success}</p>}
+          {success && (
+            <p className={`mt-4 text-center text-[10px] font-black uppercase tracking-widest ${success.includes('❌') ? 'text-red-500' : 'text-emerald-500'}`}>
+              {success}
+            </p>
+          )}
         </div>
       </motion.div>
     </div>

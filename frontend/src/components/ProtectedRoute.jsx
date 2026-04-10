@@ -1,17 +1,19 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../contexte/AuthContext";
 import { useEffect, useState } from "react";
-import { supabase } from "../utils/supabaseClient"; // 🔄 Bye bye Firebase, bonjour Supabase
+import { supabase } from "../utils/supabaseClient"; 
 import * as Icons from "lucide-react";
 
 export default function ProtectedRoute({ children, adminOnly = false }) {
   const { user } = useAuth();
   const location = useLocation();
-  const [role, setRole] = useState(null);
+  
+  // Au lieu de stocker juste le rôle, on stocke tout le profil de sécurité
+  const [securityProfile, setSecurityProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const checkUserRole = async () => {
+    const checkUserPermissions = async () => {
       // 1️⃣ Si pas d'utilisateur, on arrête le chargement tout de suite
       if (!user) {
         setLoading(false);
@@ -19,28 +21,27 @@ export default function ProtectedRoute({ children, adminOnly = false }) {
       }
 
       try {
-        // 2️⃣ 🔍 On récupère le rôle dans la table 'users' de Supabase
-        // Note : Supabase utilise 'id' (UUID) et non 'uid'
+        // 2️⃣ 🔍 On récupère TOUTES les infos de sécurité dans la table 'users'
         const { data, error } = await supabase
           .from('users')
-          .select('role')
+          .select('role, is_admin, is_banned') // Ajout des nouvelles colonnes
           .eq('id', user.id) 
-          .single();
+          .maybeSingle(); // maybeSingle est plus robuste que .single()
 
-        if (data) {
-          setRole(data.role || "user");
-        } else {
-          setRole("user");
-        }
+        if (error) throw error;
+
+        // On sauvegarde l'état complet
+        setSecurityProfile(data || { role: "user", is_admin: false, is_banned: false });
+        
       } catch (error) {
-        console.error("Erreur vérification rôle Supabase:", error);
-        setRole("user");
+        console.error("Erreur vérification droits Supabase:", error);
+        setSecurityProfile({ role: "user", is_admin: false, is_banned: false });
       } finally {
         setLoading(false);
       }
     };
 
-    checkUserRole();
+    checkUserPermissions();
   }, [user]);
 
   // 🔹 1. Écran de "Security Clearance" (Anti-clignotement)
@@ -60,13 +61,24 @@ export default function ProtectedRoute({ children, adminOnly = false }) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // 🔹 3. Redirection si accès Admin requis mais rôle insuffisant
-  if (adminOnly && role !== "admin") {
-    console.warn("🚫 Accès VIP refusé : Droits administrateur requis.");
-    // On redirige vers le dashboard vendeur par défaut ou l'accueil
-    return <Navigate to="/dashboard" replace />;
+  // 🔹 3. Sécurité Absolue : Blocage si le compte est banni
+  if (securityProfile?.is_banned) {
+    console.warn("🚫 Accès bloqué : Ce compte est banni.");
+    // On pourrait aussi déclencher un logout de force ici
+    return <Navigate to="/login" replace />;
   }
 
-  // 🔹 4. Accès accordé !
+  // 🔹 4. Redirection si accès Admin requis mais rôle insuffisant
+  if (adminOnly) {
+    // Le VIP Pass : Soit la case is_admin est cochée, soit le rôle est explicitement "admin"
+    const hasAdminRights = securityProfile?.is_admin === true || securityProfile?.role === "admin";
+    
+    if (!hasAdminRights) {
+      console.warn("🚫 Accès VIP refusé : Droits administrateur requis.");
+      return <Navigate to="/dashboard" replace />;
+    }
+  }
+
+  // 🔹 5. Accès accordé !
   return children;
 }

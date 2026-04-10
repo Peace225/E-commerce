@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-
 import * as Icons from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { supabase } from "../../utils/supabaseClient"; // 🔄 Import Supabase
 
 export default function AdminLogs() {
   const [logs, setLogs] = useState([]);
@@ -9,19 +9,39 @@ export default function AdminLogs() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState("Tous");
 
-  // 🔄 RÉCUPÉRATION DES LOGS (Historique système)
+  // 🔄 RÉCUPÉRATION DES LOGS (Supabase)
   useEffect(() => {
-    // Note : Pour voir des données ici, tu devras créer une collection "logs"
-    // et y ajouter un document à chaque action admin (ex: bannissement, retrait, etc.)
-    const q = query(collection(db, "logs"), orderBy("createdAt", "desc"), limit(100));
-    const unsub = onSnapshot(q, (snap) => {
-      setLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setLoading(false);
-    });
-    return () => unsub();
+    const fetchLogs = async () => {
+      try {
+        // 📥 Récupère les 100 dernières actions du système
+        const { data, error } = await supabase
+          .from('logs') // ⚠️ Assure-toi d'avoir créé cette table dans Supabase
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(100);
+
+        if (error) throw error;
+        if (data) setLogs(data);
+      } catch (error) {
+        console.error("Erreur chargement des logs d'audit:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchLogs();
+
+    // ⚡ Temps Réel : On écoute les nouvelles entrées dans la table 'logs'
+    const channel = supabase.channel('admin-logs-changes')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'logs' }, () => {
+        fetchLogs();
+      })
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
   }, []);
 
-  // 📥 FONCTION : EXPORTER EN CSV (EXCEL)
+  // 📥 FONCTION : EXPORTER EN CSV (Adaptée pour Supabase / Dates standards)
   const exportToCSV = () => {
     if (logs.length === 0) {
       alert("Aucune donnée à exporter.");
@@ -33,10 +53,14 @@ export default function AdminLogs() {
     
     // 2. Formater les données
     const rows = filteredLogs.map(log => {
-      const dateStr = log.createdAt?.toDate ? log.createdAt.toDate().toLocaleString('fr-FR') : "Date inconnue";
+      // 🕒 Gestion robuste de la date Supabase
+      const dateString = log.created_at || log.createdAt;
+      const dateStr = dateString ? new Date(dateString).toLocaleString('fr-FR') : "Date inconnue";
+      const adminEmail = log.admin_email || log.adminEmail || "Système";
+
       return [
         `"${dateStr}"`, 
-        `"${log.adminEmail || "Système"}"`, 
+        `"${adminEmail}"`, 
         `"${log.module || "Général"}"`, 
         `"${log.action || "Action enregistrée"}"`, 
         `"${log.details || ""}"`
@@ -56,10 +80,12 @@ export default function AdminLogs() {
     document.body.removeChild(link);
   };
 
-  // 🔍 FILTRAGE
+  // 🔍 FILTRAGE (Sécurisé pour snake_case et camelCase)
   const filteredLogs = logs.filter(log => {
-    const matchesSearch = log.adminEmail?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          log.action?.toLowerCase().includes(searchTerm.toLowerCase());
+    const adminEmail = log.admin_email || log.adminEmail || "";
+    
+    const matchesSearch = adminEmail.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          (log.action || "").toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = filterType === "Tous" || log.module === filterType;
     return matchesSearch && matchesType;
   });
@@ -71,6 +97,14 @@ export default function AdminLogs() {
     "Utilisateurs": "bg-blue-500/10 text-blue-500 border-blue-500/20",
     "Catalogue": "bg-orange-500/10 text-orange-500 border-orange-500/20",
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Icons.Loader2 className="animate-spin text-red-500" size={40} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-10 pb-10">
@@ -129,36 +163,42 @@ export default function AdminLogs() {
             </thead>
             <tbody className="divide-y divide-white/5">
               <AnimatePresence>
-                {filteredLogs.map((log, i) => (
-                  <motion.tr 
-                    initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-                    key={log.id} className="hover:bg-white/[0.02] transition-colors group"
-                  >
-                    <td className="p-8">
-                      <div className="flex items-center gap-4">
-                        <Icons.Activity size={16} className="text-slate-600 group-hover:text-red-500 transition-colors" />
-                        <div className="flex flex-col">
-                          <span className="font-bold text-white text-xs">{log.createdAt?.toDate().toLocaleDateString('fr-FR')}</span>
-                          <span className="text-[10px] text-slate-500 font-mono mt-0.5">{log.createdAt?.toDate().toLocaleTimeString('fr-FR')}</span>
+                {filteredLogs.map((log, i) => {
+                  // ⏱️ Parsing de la date robuste
+                  const dateString = log.created_at || log.createdAt;
+                  const dateObj = dateString ? new Date(dateString) : new Date();
+
+                  return (
+                    <motion.tr 
+                      initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
+                      key={log.id} className="hover:bg-white/[0.02] transition-colors group"
+                    >
+                      <td className="p-8">
+                        <div className="flex items-center gap-4">
+                          <Icons.Activity size={16} className="text-slate-600 group-hover:text-red-500 transition-colors" />
+                          <div className="flex flex-col">
+                            <span className="font-bold text-white text-xs">{dateObj.toLocaleDateString('fr-FR')}</span>
+                            <span className="text-[10px] text-slate-500 font-mono mt-0.5">{dateObj.toLocaleTimeString('fr-FR')}</span>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="p-8">
-                      <span className="text-sm font-black text-slate-300">{log.adminEmail || "Système Automatique"}</span>
-                    </td>
-                    <td className="p-8 text-center">
-                      <span className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest border ${moduleColors[log.module] || 'bg-slate-500/10 text-slate-500 border-slate-500/20'}`}>
-                        {log.module || "Général"}
-                      </span>
-                    </td>
-                    <td className="p-8">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-bold text-white uppercase tracking-tight">{log.action}</span>
-                        <span className="text-[10px] text-slate-500 font-medium mt-1 leading-relaxed max-w-md">{log.details}</span>
-                      </div>
-                    </td>
-                  </motion.tr>
-                ))}
+                      </td>
+                      <td className="p-8">
+                        <span className="text-sm font-black text-slate-300">{log.admin_email || log.adminEmail || "Système Automatique"}</span>
+                      </td>
+                      <td className="p-8 text-center">
+                        <span className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest border ${moduleColors[log.module] || 'bg-slate-500/10 text-slate-500 border-slate-500/20'}`}>
+                          {log.module || "Général"}
+                        </span>
+                      </td>
+                      <td className="p-8">
+                        <div className="flex flex-col">
+                          <span className="text-xs font-bold text-white uppercase tracking-tight">{log.action}</span>
+                          <span className="text-[10px] text-slate-500 font-medium mt-1 leading-relaxed max-w-md">{log.details}</span>
+                        </div>
+                      </td>
+                    </motion.tr>
+                  );
+                })}
               </AnimatePresence>
             </tbody>
           </table>

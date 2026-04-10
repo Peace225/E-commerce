@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import * as Icons from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { supabase } from "../../utils/supabaseClient"; // 🔄 Import Supabase
 
 export default function AdminBoutiques() {
   const [boutiques, setBoutiques] = useState([]);
@@ -8,38 +9,76 @@ export default function AdminBoutiques() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("Tous");
 
-  // 🔄 Synchronisation en temps réel
+  // 🔄 Synchronisation en temps réel avec Supabase
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "boutiques"), (snap) => {
-      setBoutiques(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setLoading(false);
-    });
-    return () => unsub();
+    const fetchBoutiques = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('boutiques')
+          .select('*')
+          .order('created_at', { ascending: false }); // Tri par date de création
+
+        if (error) throw error;
+        if (data) setBoutiques(data);
+      } catch (error) {
+        console.error("Erreur chargement des boutiques:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchBoutiques();
+
+    // ⚡ Souscription temps réel (Le nouveau onSnapshot)
+    const channel = supabase.channel('admin-boutiques-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'boutiques' }, () => {
+        fetchBoutiques(); // Recharge la liste si une boutique est ajoutée/modifiée/supprimée
+      })
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
   }, []);
 
   // ⚙️ ACTION : MODIFIER LE STATUT (Activer/Désactiver)
   const toggleStatus = async (id, currentStatus) => {
     const newStatus = currentStatus === "active" ? "inactive" : "active";
     try {
-      await updateDoc(doc(db, "boutiques", id), { statut: newStatus });
+      const { error } = await supabase
+        .from('boutiques')
+        .update({ statut: newStatus })
+        .eq('id', id);
+
+      if (error) throw error;
     } catch (error) {
       console.error("Erreur mise à jour statut:", error);
+      alert("Erreur lors de la modification du statut.");
     }
   };
 
+  // ⚙️ ACTION : SUPPRIMER UNE BOUTIQUE
   const handleDelete = async (id) => {
     if (window.confirm("🚨 ATTENTION : Supprimer cette boutique effacera son catalogue. Confirmer ?")) {
       try {
-        await deleteDoc(doc(db, "boutiques", id));
+        const { error } = await supabase
+          .from('boutiques')
+          .delete()
+          .eq('id', id);
+
+        if (error) throw error;
       } catch (error) {
+        console.error("Erreur de suppression:", error);
         alert("Erreur lors de la suppression.");
       }
     }
   };
 
+  // 🔍 Filtrage (gestion du camelCase vs snake_case)
   const filteredBoutiques = boutiques.filter(b => {
-    const matchesSearch = b.nom?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          b.proprietaireEmail?.toLowerCase().includes(searchTerm.toLowerCase());
+    const nom = b.nom || "";
+    const email = b.proprietaire_email || b.proprietaireEmail || ""; // Securité Postgres
+
+    const matchesSearch = nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          email.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesFilter = filterStatus === "Tous" || b.statut === filterStatus;
     return matchesSearch && matchesFilter;
   });
@@ -48,8 +87,16 @@ export default function AdminBoutiques() {
   const stats = {
     total: boutiques.length,
     active: boutiques.filter(b => b.statut === "active").length,
-    totalProducts: boutiques.reduce((acc, b) => acc + (b.nombreProduits || 0), 0)
+    totalProducts: boutiques.reduce((acc, b) => acc + (b.nombre_produits || b.nombreProduits || 0), 0)
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Icons.Loader2 className="animate-spin text-blue-500" size={40} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-10">
@@ -133,32 +180,33 @@ export default function AdminBoutiques() {
                     </td>
                     <td className="p-8">
                       <div className="flex flex-col">
-                        <span className="text-sm font-bold text-slate-300">{b.proprietaireEmail}</span>
+                        <span className="text-sm font-bold text-slate-300">{b.proprietaire_email || b.proprietaireEmail}</span>
                         <span className="text-[10px] text-slate-500 font-black uppercase tracking-[0.1em]">Vendeur certifié</span>
                       </div>
                     </td>
                     <td className="p-8 text-center">
                       <div className="inline-flex items-center gap-2 bg-white/5 px-4 py-2 rounded-xl border border-white/5">
                         <Icons.Package size={14} className="text-red-500" />
-                        <span className="text-sm font-black text-white">{b.nombreProduits || 0}</span>
+                        <span className="text-sm font-black text-white">{b.nombre_produits || b.nombreProduits || 0}</span>
                       </div>
                     </td>
                     <td className="p-8 text-center">
                       <button 
                         onClick={() => toggleStatus(b.id, b.statut)}
-                        className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${b.statut === 'active' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}
+                        className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${b.statut === 'active' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500 hover:text-white' : 'bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500 hover:text-white'}`}
                       >
                         {b.statut || "inactive"}
                       </button>
                     </td>
                     <td className="p-8 text-right">
-                      <div className="flex justify-end gap-3">
-                        <button className="p-3 bg-slate-800 hover:bg-white/10 text-slate-400 hover:text-white rounded-xl transition-all">
+                      <div className="flex justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button className="p-3 bg-slate-800 hover:bg-white/10 text-slate-400 hover:text-white rounded-xl transition-all" title="Éditer la boutique">
                           <Icons.Edit3 size={16} />
                         </button>
                         <button 
                           onClick={() => handleDelete(b.id)} 
                           className="p-3 bg-red-500/10 hover:bg-red-600 text-red-500 hover:text-white rounded-xl transition-all"
+                          title="Supprimer la boutique"
                         >
                           <Icons.Trash2 size={16} />
                         </button>
@@ -170,6 +218,13 @@ export default function AdminBoutiques() {
             </tbody>
           </table>
         </div>
+
+        {filteredBoutiques.length === 0 && !loading && (
+          <div className="p-24 text-center">
+            <Icons.Store className="mx-auto text-slate-700 mb-4" size={48} />
+            <p className="text-slate-500 font-black uppercase text-[10px] tracking-widest">Aucune boutique trouvée</p>
+          </div>
+        )}
       </div>
     </div>
   );

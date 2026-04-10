@@ -1,100 +1,105 @@
-import { useState, useEffect } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { useEffect, useState, useCallback } from "react";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../contexte/AuthContext";
+import { supabase } from "../../utils/supabaseClient";
 import * as Icons from "lucide-react";
-import AdminProduits from "./AdminProduits";
-import AdminSupport from "./AdminSupport";
-import AdminMarketing from "./AdminMarketing";
-import AdminLogs from "./AdminLogs";
+import { motion, AnimatePresence } from "framer-motion";
 
-// --- IMPORTS DES COMPOSANTS ---
-// ⚠️ Vérifie que ton dossier de composants s'appelle bien "components" à la racine de "src"
-import SidebarAdmin from "./SidebarAdmin"; 
-
-// --- IMPORTS DES PAGES ADMIN ---
-// Ces fichiers doivent se trouver dans le MÊME dossier que AdminDashboard.jsx
+// --- MODULES ADMIN (Tous dans le même dossier selon ta capture) ---
+import SidebarAdmin from "./SidebarAdmin";
 import AdminHome from "./AdminHome";
 import AdminUsers from "./AdminUsers";
 import AdminBoutiques from "./AdminBoutiques";
 import AdminCommandes from "./AdminCommandes";
 import AdminCommissions from "./AdminCommissions";
-import AdminFinances from "./AdminFinances"; // Le module de trésorerie que l'on vient de créer
+import AdminFinances from "./AdminFinances";
 import AdminParametres from "./AdminParametres";
+import AdminProduits from "./AdminProduits";
+import AdminSupport from "./AdminSupport";
+import AdminMarketing from "./AdminMarketing";
+import AdminLogs from "./AdminLogs";
 
 export default function AdminDashboard() {
-  const { logout } = useAuth(); // Récupère la fonction de déconnexion
+  const { user, logout } = useAuth();
+  const location = useLocation();
   const [withdrawalsCount, setWithdrawalsCount] = useState(0);
-  const [menuOpen, setMenuOpen] = useState(false); // État pour le menu mobile
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [checking, setChecking] = useState(true);
 
-  // 🔄 ÉCOUTEUR : Badge des retraits en attente pour la Sidebar
+  // 🛡️ 1. SÉCURITÉ ROOT (Table 'users')
   useEffect(() => {
-    const q = query(
-      collection(db, "transactions"), 
-      where("type", "==", "withdrawal"),
-      where("status", "==", "En attente")
-    );
-    const unsub = onSnapshot(q, (snap) => {
-      setWithdrawalsCount(snap.size);
-    });
-    return () => unsub();
-  }, []);
+    const checkAdminStatus = async () => {
+      if (!user) {
+        const t = setTimeout(() => { if (!user) setChecking(false); }, 2000);
+        return () => clearTimeout(t);
+      }
 
-  const handleLogout = async () => {
-    if (window.confirm("Êtes-vous sûr de vouloir quitter le God Mode ?")) {
-      await logout();
-    }
-  };
+      try {
+        const { data, error } = await supabase
+          .from('users') 
+          .select('is_admin, role')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (data && (data.is_admin || data.role === 'admin')) {
+          setIsAuthorized(true);
+        } else {
+          logout();
+        }
+      } catch (err) {
+        logout();
+      } finally {
+        setChecking(false);
+      }
+    };
+    checkAdminStatus();
+  }, [user, logout]);
+
+  if (checking) return (
+    <div className="h-screen bg-[#020617] flex items-center justify-center">
+      <Icons.Loader2 className="animate-spin text-orange-500" size={40} />
+    </div>
+  );
+
+  if (!isAuthorized) return <Navigate to="/login" replace />;
 
   return (
     <div className="min-h-screen bg-[#020617] text-slate-300 font-sans flex overflow-hidden">
-      
-      {/* 🔹 1. BARRE LATÉRALE (SIDEBAR) */}
       <SidebarAdmin 
         menuOpen={menuOpen} 
         setMenuOpen={setMenuOpen} 
-        handleLogout={handleLogout}
+        handleLogout={logout}
         withdrawalsBadge={withdrawalsCount} 
       />
 
-      {/* 🔹 2. CONTENU DYNAMIQUE (Zone de droite) */}
-      <main className="flex-1 h-screen overflow-y-auto custom-scrollbar relative">
-        
-        {/* EN-TÊTE MOBILE (Visible uniquement sur téléphone) */}
-        <div className="lg:hidden p-4 bg-[#0f172a] border-b border-white/5 flex items-center justify-between sticky top-0 z-40 shadow-xl">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center shadow-lg shadow-red-600/30">
-              <Icons.ShieldAlert size={16} className="text-white" />
-            </div>
-            <h1 className="text-white font-black italic tracking-tighter uppercase">RYNEK <span className="text-red-500">ADMIN</span></h1>
-          </div>
-          <button onClick={() => setMenuOpen(true)} className="p-2 text-slate-400 hover:text-white transition-colors">
-            <Icons.Menu size={24} />
-          </button>
+      <main className="flex-1 h-screen overflow-y-auto relative custom-scrollbar">
+        {/* Header Mobile */}
+        <div className="lg:hidden p-6 bg-[#0f172a]/80 border-b border-white/5 flex items-center justify-between sticky top-0 z-40">
+          <h1 className="text-white font-black text-sm uppercase">Rynek <span className="text-orange-500">System</span></h1>
+          <button onClick={() => setMenuOpen(true)} className="p-2 text-slate-400"><Icons.Menu size={24} /></button>
         </div>
 
-        {/* 🔹 3. SYSTÈME DE ROUTES (Le cœur de l'affichage) */}
-        <div className="p-6 lg:p-10 max-w-[1600px] mx-auto">
-          <Routes>
-            {/* Page d'accueil par défaut (/admin) */}
-            <Route path="/" element={<AdminHome />} />
-
-            {/* Les différents modules (/admin/users, /admin/finances, etc.) */}
-            <Route path="users" element={<AdminUsers />} />
-            <Route path="boutiques" element={<AdminBoutiques />} />
-            <Route path="commandes" element={<AdminCommandes />} />
-            <Route path="commissions" element={<AdminCommissions />} />
-            <Route path="finances" element={<AdminFinances />} />
-            <Route path="parametres" element={<AdminParametres />} />
-            <Route path="produits" element={<AdminProduits />} />
-            <Route path="support" element={<AdminSupport />} />
-            <Route path="marketing" element={<AdminMarketing />} />
-             <Route path="logs" element={<AdminLogs />} />
-
-            {/* Redirection de sécurité si l'URL saisie est fausse */}
-            <Route path="*" element={<Navigate to="/admin" replace />} />
-          </Routes>
+        <div className="p-6 lg:p-12 max-w-[1700px] mx-auto">
+          <AnimatePresence mode="wait">
+            <motion.div key={location.pathname} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+              <Routes location={location}>
+                <Route path="/" element={<AdminHome />} />
+                <Route path="users" element={<AdminUsers />} />
+                <Route path="boutiques" element={<AdminBoutiques />} />
+                <Route path="commandes" element={<AdminCommandes />} />
+                <Route path="commissions" element={<AdminCommissions />} />
+                <Route path="finances" element={<AdminFinances />} />
+                <Route path="parametres" element={<AdminParametres />} />
+                <Route path="produits" element={<AdminProduits />} />
+                <Route path="support" element={<AdminSupport />} />
+                <Route path="marketing" element={<AdminMarketing />} />
+                <Route path="logs" element={<AdminLogs />} />
+                <Route path="*" element={<Navigate to="/admin" replace />} />
+              </Routes>
+            </motion.div>
+          </AnimatePresence>
         </div>
-
       </main>
     </div>
   );

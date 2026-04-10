@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-
 import * as Icons from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { supabase } from "../../utils/supabaseClient"; // 🔄 Import Supabase
 
 export default function AdminProduits() {
   const [produits, setProduits] = useState([]);
@@ -9,22 +9,52 @@ export default function AdminProduits() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("Tous");
 
-  // 🔄 SYNCHRONISATION DU CATALOGUE GLOBAL
+  // 🔄 SYNCHRONISATION DU CATALOGUE GLOBAL (Supabase)
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "produits"), (snap) => {
-      setProduits(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setLoading(false);
-    });
-    return () => unsub();
+    const fetchProduits = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('produits')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        if (data) setProduits(data);
+      } catch (error) {
+        console.error("Erreur chargement catalogue:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProduits();
+
+    // ⚡ Souscription temps réel
+    const channel = supabase.channel('admin-produits-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'produits' }, () => {
+        fetchProduits();
+      })
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
   }, []);
 
   // ⚙️ ACTION : CENSURER / PUBLIER UN PRODUIT
   const toggleVisibility = async (id, currentStatus) => {
     const newStatus = currentStatus === "suspendu" ? "actif" : "suspendu";
     try {
-      await updateDoc(doc(db, "produits", id), { statut: newStatus });
+      const { error } = await supabase
+        .from('produits')
+        .update({ 
+          statut: newStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id);
+
+      if (error) throw error;
     } catch (error) {
       console.error("Erreur mise à jour statut produit:", error);
+      alert("Erreur lors de la modification du statut.");
     }
   };
 
@@ -32,19 +62,30 @@ export default function AdminProduits() {
   const handleDelete = async (id) => {
     if (window.confirm("🚨 Supprimer définitivement ce produit de la base de données ?")) {
       try {
-        await deleteDoc(doc(db, "produits", id));
+        const { error } = await supabase
+          .from('produits')
+          .delete()
+          .eq('id', id);
+
+        if (error) throw error;
       } catch (error) {
+        console.error("Erreur de suppression:", error);
         alert("Erreur lors de la suppression.");
       }
     }
   };
 
-  // 🔍 FILTRES
+  // 🔍 FILTRES (Sécurisé pour les formats de DB variés)
   const filteredProduits = produits.filter(p => {
-    const matchesSearch = p.nom?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          p.boutiqueNom?.toLowerCase().includes(searchTerm.toLowerCase());
+    const nomProduit = p.nom || p.title || "";
+    const nomBoutique = p.boutique_nom || p.boutiqueNom || p.vendeur || "";
+    
+    const matchesSearch = nomProduit.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          nomBoutique.toLowerCase().includes(searchTerm.toLowerCase());
+    
     const status = p.statut || "actif";
     const matchesFilter = filterStatus === "Tous" || status === filterStatus;
+    
     return matchesSearch && matchesFilter;
   });
 
@@ -53,8 +94,16 @@ export default function AdminProduits() {
     total: produits.length,
     actifs: produits.filter(p => (p.statut || "actif") === "actif").length,
     suspendus: produits.filter(p => p.statut === "suspendu").length,
-    rupture: produits.filter(p => p.stock <= 0).length,
+    rupture: produits.filter(p => (p.stock || 0) <= 0).length,
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Icons.Loader2 className="animate-spin text-blue-500" size={40} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-10 pb-10">
@@ -124,6 +173,13 @@ export default function AdminProduits() {
               <AnimatePresence>
                 {filteredProduits.map((p, i) => {
                   const isSuspended = p.statut === "suspendu";
+                  
+                  // 🖼️ Gestion robuste de l'image (Tableau vs URL unique vs Firebase relic)
+                  let displayImage = "https://via.placeholder.com/50";
+                  if (p.image) displayImage = p.image;
+                  else if (p.image_url) displayImage = p.image_url;
+                  else if (Array.isArray(p.images) && p.images.length > 0) displayImage = p.images[0];
+
                   return (
                     <motion.tr 
                       initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.02 }}
@@ -132,34 +188,37 @@ export default function AdminProduits() {
                       <td className="p-8">
                         <div className="flex items-center gap-4">
                           <img 
-                            src={p.images?.[0] || "https://via.placeholder.com/50"} 
-                            alt={p.nom} 
-                            className={`w-12 h-12 rounded-xl object-cover bg-slate-800 ${isSuspended ? 'grayscale opacity-50' : ''}`}
+                            src={displayImage} 
+                            alt={p.nom || p.title || "Produit"} 
+                            className={`w-12 h-12 rounded-xl object-cover bg-slate-800 border border-white/10 ${isSuspended ? 'grayscale opacity-50' : ''}`}
+                            onError={(e) => e.target.src = "https://via.placeholder.com/50"} // Sécurité si image brisée
                           />
                           <div className="flex flex-col min-w-0 max-w-[200px]">
-                            <span className="font-black text-white text-xs uppercase tracking-tight truncate">{p.nom}</span>
+                            <span className="font-black text-white text-xs uppercase tracking-tight truncate">{p.nom || p.title || "Sans Nom"}</span>
                             <span className="text-[9px] text-slate-500 font-bold uppercase mt-1">{p.categorie || "Non classé"}</span>
                           </div>
                         </div>
                       </td>
                       <td className="p-8">
                         <div className="flex flex-col">
-                          <span className="text-sm font-bold text-slate-300">{p.boutiqueNom || "Boutique Inconnue"}</span>
-                          <span className="text-[9px] text-slate-500 font-mono mt-1">ID: {p.boutiqueId?.slice(0,6)}</span>
+                          <span className="text-sm font-bold text-slate-300">{p.boutique_nom || p.boutiqueNom || p.vendeur || "Boutique Inconnue"}</span>
+                          <span className="text-[9px] text-slate-500 font-mono mt-1">
+                            ID: {p.boutique_id?.slice(0,6) || p.uid?.slice(0,6) || p.id.slice(0,6)}
+                          </span>
                         </div>
                       </td>
                       <td className="p-8 text-center">
                         <div className="flex flex-col items-center">
                           <span className="text-emerald-400 font-black text-sm">{(p.prix || 0).toLocaleString()} F</span>
-                          <span className={`text-[9px] font-black uppercase tracking-widest mt-1 px-2 py-0.5 rounded-md ${p.stock > 0 ? 'bg-slate-800 text-slate-400' : 'bg-orange-500/20 text-orange-500'}`}>
-                            {p.stock > 0 ? `${p.stock} en stock` : 'Rupture'}
+                          <span className={`text-[9px] font-black uppercase tracking-widest mt-1 px-2 py-0.5 rounded-md ${(p.stock || 0) > 0 ? 'bg-slate-800 text-slate-400' : 'bg-orange-500/20 text-orange-500'}`}>
+                            {(p.stock || 0) > 0 ? `${p.stock} en stock` : 'Rupture'}
                           </span>
                         </div>
                       </td>
                       <td className="p-8 text-center">
                         <button 
                           onClick={() => toggleVisibility(p.id, p.statut)}
-                          className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${!isSuspended ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}
+                          className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all hover:scale-105 ${!isSuspended ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}
                         >
                           {!isSuspended ? "En ligne" : "Censuré"}
                         </button>

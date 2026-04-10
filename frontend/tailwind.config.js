@@ -8,11 +8,11 @@ export default {
   theme: {
     extend: {
       colors: {
-        // 🔄 On lie les couleurs aux variables CSS dynamiques
-        primary: "var(--color-primary, #fea928)", 
+        // 🔄 Variables parfaitement alignées avec App.jsx
+        primary: "var(--color-primary, #fea928)", // L'orange par défaut
         secondary: "var(--color-secondary, #ed8900)",
-        "theme-text": "var(--color-text, #ffffff)",
-        "theme-bg": "var(--color-bg)",
+        "theme-text": "var(--theme-text, #1F2937)", // Corrigé : gris foncé par défaut
+        "theme-bg": "var(--theme-bg, #FFFFFF)",     // Corrigé : blanc par défaut
       },
       container: {
         center: true,
@@ -40,7 +40,6 @@ export default {
       },
       animation: {
         marquee: 'marquee 12s linear infinite',
-        // On définit les classes utilisables dans ton code React
         'bounce-slow': 'bounce-slow 3s ease-in-out infinite',
         'snow-fall': 'fall 10s linear infinite',
       },

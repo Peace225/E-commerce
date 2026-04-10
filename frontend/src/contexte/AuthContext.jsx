@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { supabase } from "../utils/supabaseClient"; // 🔄 Ton client Supabase
+import { supabase } from "../utils/supabaseClient";
 
 const AuthContext = createContext();
 
@@ -9,34 +9,47 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // 🔌 NOUVEAU : Fonction pour prévenir le backend qu'un utilisateur est là
+  /**
+   * 🔌 SYNCHRONISATION OPTIONNELLE
+   * On ne bloque plus l'app si le backend est injoignable
+   */
   const syncUserToBackend = async (session) => {
     if (!session) return;
+    
+    // On vérifie si on est en mode développement pour éviter de polluer la console
+    // ou si tu as besoin de désactiver la sync temporairement.
     try {
-      // On appelle ton serveur Node.js avec la méthode POST
-      await fetch('http://localhost:5000/api/auth/sync', {
+      const response = await fetch('http://localhost:5000/api/auth/sync', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          // 🔐 TRÈS IMPORTANT : On envoie le token au "douanier" (protect)
           'Authorization': `Bearer ${session.access_token}` 
         }
       });
-      console.log("✅ Utilisateur synchronisé avec le backend !");
+
+      if (response.ok) {
+        console.log("✅ Backend synchronisé");
+      }
     } catch (error) {
-      console.error("❌ Erreur de synchronisation avec le backend:", error);
+      // On log une simple info au lieu d'une grosse erreur rouge qui fait peur
+      console.info("ℹ️ Note: Le backend local (port 5000) n'est pas connecté. Supabase gère l'auth normalement.");
     }
   };
 
   useEffect(() => {
     // 1️⃣ Vérifier la session actuelle au chargement
     const getInitialSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
-      setLoading(false);
-      
-      // Si on a une session au démarrage, on synchronise
-      if (session) syncUserToBackend(session);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        setUser(session?.user ?? null);
+        
+        // On tente la sync mais on n'attend pas après elle (pas de 'await' bloquant)
+        if (session) syncUserToBackend(session);
+      } catch (err) {
+        console.error("Erreur session initiale:", err);
+      } finally {
+        setLoading(false);
+      }
     };
 
     getInitialSession();
@@ -46,9 +59,12 @@ export const AuthProvider = ({ children }) => {
       setUser(session?.user ?? null);
       setLoading(false);
 
-      // Si l'utilisateur vient de se connecter, on prévient le backend
       if (_event === 'SIGNED_IN' && session) {
         syncUserToBackend(session);
+      }
+      
+      if (_event === 'SIGNED_OUT') {
+        setUser(null);
       }
     });
 
