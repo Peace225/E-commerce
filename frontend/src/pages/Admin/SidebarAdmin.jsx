@@ -33,7 +33,7 @@ export default function SidebarAdmin({ menuOpen, setMenuOpen, handleLogout, with
             <Icons.ShieldCheck size={16} className="text-white" />
           </div>
           <h1 className="text-xl font-black tracking-tighter italic uppercase text-white">
-            RYNEK <span className="text-red-600 text-sm">ADMIN</span>
+            Life Shop <span className="text-red-600 text-sm">ADMIN</span>
           </h1>
         </div>
 

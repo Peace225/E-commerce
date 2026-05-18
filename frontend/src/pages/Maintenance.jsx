@@ -16,7 +16,7 @@ export default function Maintenance() {
           Maintenance <span className="text-red-500">En cours</span>
         </h1>
         <p className="text-slate-400 font-bold text-sm leading-relaxed mb-8">
-          Rynek Pro s'actualise pour vous offrir une meilleure expérience. 
+          Life Shop s'actualise pour vous offrir une meilleure expérience. 
           Nous serons de retour dans quelques instants. Merci de votre patience !
         </p>
         <div className="h-1 w-20 bg-red-600 mx-auto rounded-full" />

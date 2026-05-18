@@ -106,7 +106,7 @@ export default function TopDeals({ user }) {
         <div className="flex flex-col lg:flex-row items-center gap-4 relative z-10 text-white px-6">
           <div className="flex items-center gap-3">
              <Zap fill="white" size={22} />
-             <h2 className="text-2xl font-black uppercase tracking-tighter">Top Deals <span className="text-yellow-300">Rynek</span></h2>
+             <h2 className="text-2xl font-black uppercase tracking-tighter">Top Deals <span className="text-yellow-300">Life Shop</span></h2>
           </div>
           <div className="flex-1 overflow-hidden">
              <motion.div className="flex gap-10 whitespace-nowrap" animate={{ x: ["0%", "-50%"] }} transition={{ repeat: Infinity, duration: 30, ease: "linear" }}>

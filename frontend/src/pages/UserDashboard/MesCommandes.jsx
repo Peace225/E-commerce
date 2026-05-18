@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { supabase } from "../../utils/supabaseClient"; // 🔄 Import Supabase
+import { useNavigate } from "react-router-dom"; // ✅ AJOUTÉ : Pour faire fonctionner le bouton retour
+import { supabase } from "../../utils/supabaseClient"; 
 import { Package, Truck, CheckCircle, Clock, ChevronDown, ChevronUp, Loader2, MapPin, ShoppingCart } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCart } from "../../components/CartContext"; 
@@ -9,17 +10,19 @@ export default function MesCommandes({ user }) {
   const [loading, setLoading] = useState(true);
   const [expandedOrderId, setExpandedOrderId] = useState(null);
   const { addToCart } = useCart(); 
+  const navigate = useNavigate(); // ✅ AJOUTÉ : Initialisation de la navigation
 
   useEffect(() => {
     const fetchOrders = async () => {
       if (!user) return;
       try {
         setLoading(true);
-        // 🔄 Requête Supabase : On filtre par l'ID du client et on trie par date
+        
+        // ✅ CORRIGÉ : 'user_id' remplace 'client_id' pour corriger l'erreur 400
         const { data, error } = await supabase
-          .from('commandes') // Assure-toi que ta table s'appelle 'commandes'
+          .from('commandes') 
           .select('*')
-          .eq('client_id', user.id) // ⚠️ Supabase utilise 'client_id' et 'user.id'
+          .eq('user_id', user.id) 
           .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -64,7 +67,6 @@ export default function MesCommandes({ user }) {
     e.stopPropagation(); 
     const productToAdd = { ...item, quantity: 1 };
     addToCart(productToAdd);
-    // On utilise la couleur primaire du thème pour l'alerte si tu veux pousser le détail !
     alert(`${item.nom} ajouté au panier !`);
   };
 
@@ -91,7 +93,6 @@ export default function MesCommandes({ user }) {
 
   return (
     <div className="space-y-6">
-      {/* HEADER AVEC COULEURS DYNAMIQUES */}
       <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 mb-6 flex items-center justify-between">
           <div>
             <h2 className="text-xl font-black uppercase italic tracking-tighter">Mes Commandes</h2>
@@ -105,7 +106,6 @@ export default function MesCommandes({ user }) {
       {orders.map((order, index) => {
         const isExpanded = expandedOrderId === order.id;
         const currentStepIndex = getStepIndex(order.statut || "en_attente");
-        // 🔄 Conversion de la date Supabase (string) en date lisible
         const date = order.created_at ? new Date(order.created_at).toLocaleDateString("fr-FR") : "Date inconnue";
 
         return (

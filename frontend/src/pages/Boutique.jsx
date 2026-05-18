@@ -33,7 +33,7 @@ export default function MaBoutique({ wallet }) {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
         <div>
           <h1 className="text-3xl font-black text-gray-900 tracking-tighter uppercase">Ma Boutique Pro</h1>
-          <p className="text-gray-500 text-sm font-medium">Gérez votre catalogue et boostez vos commissions Rynek.</p>
+          <p className="text-gray-500 text-sm font-medium">Gérez votre catalogue et boostez vos commissions Life Shop.</p>
         </div>
         <button 
           onClick={() => setShowAddModal(true)}

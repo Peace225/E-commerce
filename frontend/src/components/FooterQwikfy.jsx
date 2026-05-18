@@ -18,7 +18,7 @@ export default function FooterQwikfy() {
           <h3 className="font-bold mt-6 mb-3">LIENS UTILES</h3>
           <ul className="space-y-1">
             <li><a href="tel:+23675000000">Commander par Tél: +236 75 00 00 00</a></li>
-            <li><Link to="/acheter">Acheter sur Rynek</Link></li>
+            <li><Link to="/acheter">Acheter sur Life Shop</Link></li>
             <li><Link to="/bons-achat">Utiliser un Bon d'achat</Link></li>
             <li><Link to="/livraison">Modalités de Livraison</Link></li>
             <li><Link to="/retour-remboursement">Retour et Remboursement</Link></li>
@@ -30,10 +30,10 @@ export default function FooterQwikfy() {
 
         {/* À propos */}
         <div>
-          <h3 className="font-bold mb-3">À PROPOS</h3>
+          <h3 className="font-bold mb-3">A PROPOS</h3>
           <ul className="space-y-1">
             <li><Link to="/a-propos">Qui sommes-nous</Link></li>
-            <li><Link to="/carrieres">Carrières chez Rynek</Link></li>
+            <li><Link to="/carrieres">Carrières chez Life Shop</Link></li>
             <li><Link to="/cgu">Conditions Générales d'Utilisation</Link></li>
             <li><Link to="/confidentialite">Politique de Confidentialité</Link></li>
             <li><Link to="/cookies">Notification sur les cookies</Link></li>
@@ -46,15 +46,15 @@ export default function FooterQwikfy() {
 
         {/* Gagner avec Qwikfy */}
         <div>
-          <h3 className="font-bold mb-3">GAGNEZ AVEC RYNEK</h3>
+          <h3 className="font-bold mb-3">GAGNEZ AVEC LIFE SHOP</h3>
           <ul className="space-y-1">
-            <li><Link to="/vendre">Vendez sur Rynek</Link></li>
+            <li><Link to="/vendre">Vendez sur Life Shop</Link></li>
             <li><Link to="/assistant-vendeur">Assistant vendeur</Link></li>
-            <li><Link to="/consultant">Devenez consultant Rynek</Link></li>
+            <li><Link to="/consultant">Devenez consultant Life Shop</Link></li>
             <li><Link to="/coupons">Coupons Nouveaux Clients</Link></li>
           </ul>
 
-          <h3 className="font-bold mt-6 mb-3">RYNEK À L'INTERNATIONAL</h3>
+          <h3 className="font-bold mt-6 mb-3">LIFE SHOP À L'INTERNATIONAL</h3>
           <ul className="space-y-1">
             <li>Maroc</li>
             <li>Côte d'Ivoire</li>
@@ -67,7 +67,7 @@ export default function FooterQwikfy() {
         {/* Newsletter & réseaux sociaux */}
         <div>
           <h3 className="font-bold mb-3">S'ABONNER AUX OFFRES</h3>
-          <p className="mb-3 text-gray-400">Inscrivez-vous pour recevoir les meilleures offres RYNEK :</p>
+          <p className="mb-3 text-gray-400">Inscrivez-vous pour recevoir les meilleures offres LIFE SHOP :</p>
           <div className="flex">
             <input
               type="email"
@@ -108,7 +108,7 @@ export default function FooterQwikfy() {
 
       {/* Footer copyright */}
       <div className="text-center py-4 bg-gray-900 text-gray-400 text-xs">
-        &copy; {new Date().getFullYear()} Rynek. Tous droits réservés.
+        &copy; {new Date().getFullYear()} Life Shop. Tous droits réservés.
       </div>
     </footer>
   );

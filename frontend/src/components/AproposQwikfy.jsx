@@ -16,7 +16,7 @@ export default function AproposQwikfy() {
     },
     {
       icon: <GraduationCap className="text-purple-500" size={28} />,
-      title: "Académie Rynek",
+      title: "Académie Life Shop",
       desc: "Formations complètes en dropshipping et marketing digital pour propulser votre activité."
     },
     {
@@ -45,11 +45,11 @@ export default function AproposQwikfy() {
             </div>
             {/* 🚀 SEO : Passage de h1 à h2 */}
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-gray-900 tracking-tighter leading-none mb-6 sm:mb-8">
-              RYNEK – Bien plus qu'une <br className="hidden sm:block" />
+              LIFE SHOP – Bien plus qu'une <br className="hidden sm:block" />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">Simple Plateforme.</span>
             </h2>
             <p className="text-sm sm:text-base text-gray-600 leading-relaxed font-medium mb-4 sm:mb-6">
-              Rynek connecte vendeurs professionnels, fournisseurs et clients dans un écosystème complet, accessible et automatisé. C'est le moteur de l'e-commerce moderne en Afrique.
+              Life Shop connecte vendeurs professionnels, fournisseurs et clients dans un écosystème complet, accessible et automatisé. C'est le moteur de l'e-commerce moderne en Afrique.
             </p>
             <p className="text-xs sm:text-sm text-gray-500 leading-relaxed">
               Accédez à un large catalogue de produits neufs ou reconditionnés : high-tech, mode, beauté, électroménager, gaming et bien plus. Chaque commande est protégée, et chaque vendeur est évalué pour garantir une expérience sans faille.

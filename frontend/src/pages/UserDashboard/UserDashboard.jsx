@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2 } from "lucide-react";
@@ -24,16 +24,16 @@ export default function UserDashboard() {
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // ✅ MISE À JOUR LOCALE DIRECTE (Optimistic UI)
-  // Permet d'afficher la photo immédiatement sans attendre le rechargement serveur
-  const handleLocalUpdate = (updatedFields) => {
+  // ✅ Optimisation UI locale directe
+  const handleLocalUpdate = useCallback((updatedFields) => {
     setUserData(prevData => ({
       ...prevData,
       ...updatedFields
     }));
-  };
+  }, []);
 
-  const refreshUserData = async () => {
+  // ✅ CORRECTION : useCallback pour éviter de recréer la fonction à chaque rendu
+  const refreshUserData = useCallback(async () => {
     if (!user) return;
     try {
       const { data, error } = await supabase
@@ -47,7 +47,7 @@ export default function UserDashboard() {
     } catch (error) {
       console.error("Erreur rafraîchissement profil:", error.message);
     }
-  };
+  }, [user]);
 
   useEffect(() => {
     if (!user) {
@@ -62,9 +62,9 @@ export default function UserDashboard() {
     };
     loadInitialData();
 
-    // Abonnement Temps Réel (Toujours utile en arrière-plan)
+    // Abonnement Temps Réel Supabase
     const channel = supabase
-      .channel('public:users')
+      .channel(`public:users:${user.id}`)
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'users', filter: `id=eq.${user.id}` },
@@ -78,7 +78,7 @@ export default function UserDashboard() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, navigate]);
+  }, [user, navigate, refreshUserData]); // ✅ refreshUserData est maintenant une dépendance stable
 
   const handleLogout = async () => {
     await supabase.auth.signOut(); 
@@ -102,7 +102,6 @@ export default function UserDashboard() {
       case "Mes Adresses": 
         return <MesAdresses user={user} />;
       case "Mon Profil": 
-        // ✅ ON PASSE LA FONCTION DE MISE À JOUR LOCALE ICI
         return <MonProfil user={user} userData={userData} onProfileUpdate={handleLocalUpdate} />;
       default: 
         return <div className="p-20 text-center text-gray-400 font-bold uppercase text-xs">Sélectionnez un onglet</div>;
@@ -119,15 +118,19 @@ export default function UserDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 font-['Inter',sans-serif] selection:bg-primary/20 selection:text-primary py-8">
+    <div className="min-h-screen bg-gray-50 font-['Inter',sans-serif] selection:bg-primary/20 selection:text-primary pt-4 pb-20 md:py-8">
       <div className="max-w-[1400px] mx-auto px-4 md:px-8">
         
-        <div className="md:hidden mb-6 flex items-center justify-between bg-white p-4 rounded-3xl shadow-sm border border-gray-100">
+        {/* Entête Mobile */}
+        <div className="md:hidden mb-4 flex items-center justify-between bg-white p-4 rounded-3xl shadow-sm border border-gray-100">
            <h1 className="font-black text-lg uppercase italic tracking-tighter">Mon Espace</h1>
            <span className="bg-primary/10 text-primary px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">Client</span>
         </div>
 
-        <div className="flex flex-col md:flex-row gap-6 md:gap-10">
+        {/* Structure adaptative sans blocage flex-col */}
+        <div className="block md:flex md:flex-row gap-6 md:gap-10">
+          
+          {/* Menu Sidebar / Bottom Bar */}
           <UserSidebar 
             activeTab={activeTab} 
             setActiveTab={setActiveTab} 
@@ -136,6 +139,7 @@ export default function UserDashboard() {
             handleLogout={handleLogout} 
           />
 
+          {/* Zone d'affichage dynamique */}
           <main className="flex-1 min-w-0">
             <AnimatePresence mode="wait">
               <motion.div
@@ -149,6 +153,7 @@ export default function UserDashboard() {
               </motion.div>
             </AnimatePresence>
           </main>
+
         </div>
       </div>
     </div>

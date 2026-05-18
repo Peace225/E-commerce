@@ -95,7 +95,7 @@ export default function Accueil() {
   return (
     <div className="w-full font-['Inter',sans-serif] bg-gray-50 min-h-screen">
       <Helmet>
-        <title>Rynek | Boutique en ligne N°1</title>
+        <title>Life Shop | Boutique en ligne N°1</title>
         <meta name="description" content="Découvrez les meilleures offres sur Rynek." />
       </Helmet>
 

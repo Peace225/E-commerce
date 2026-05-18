@@ -76,7 +76,7 @@ export default function AdminDashboard() {
       <main className="flex-1 h-screen overflow-y-auto relative custom-scrollbar">
         {/* Header Mobile */}
         <div className="lg:hidden p-6 bg-[#0f172a]/80 border-b border-white/5 flex items-center justify-between sticky top-0 z-40">
-          <h1 className="text-white font-black text-sm uppercase">Rynek <span className="text-orange-500">System</span></h1>
+          <h1 className="text-white font-black text-sm uppercase">Life Shop <span className="text-orange-500">System</span></h1>
           <button onClick={() => setMenuOpen(true)} className="p-2 text-slate-400"><Icons.Menu size={24} /></button>
         </div>
 

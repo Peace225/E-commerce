@@ -1,58 +1,64 @@
-const { supabase } = require('../config/supabaseClient'); // 🔄 Import propre !
-// On n'importe pas forcément UserModel si on formate les données directement ici, 
-// mais tu peux le remettre si ton modèle nettoie des choses spécifiques.
+const { supabase } = require('../config/supabaseClient');
 
-exports.registerOrLogin = async (req, res) => {
+const registerOrLogin = async (req, res) => {
   try {
-    // 1. 🔐 On récupère les infos depuis le "douanier" (le middleware protect)
-    // Pas besoin de vérifier le token, s'il arrive ici c'est que le douanier l'a validé !
     const uid = req.user.id;
     const email = req.user.email;
-    
-    // On récupère d'éventuelles infos envoyées par React (comme le rôle choisi lors de l'inscription)
-    const { displayName, photoURL, role } = req.body; 
+    const { displayName, photoURL, role, metadata } = req.body || {};
 
-    // 2. 🔍 Vérifier si l'utilisateur existe déjà dans la table 'users'
+    // 1. Vérifier si le profil existe
     const { data: existingUser, error: fetchError } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', uid)
-      .maybeSingle(); 
+    .from('profiles')
+    .select('*')
+    .eq('id', uid)
+    .maybeSingle();
 
     if (fetchError) throw fetchError;
-
-    // 3. 🆕 Si l'utilisateur n'existe pas encore, on le crée
-    if (!existingUser) {
-      // Générer un code de parrainage unique
-      const referralCode = `RYNK-${Math.floor(1000 + Math.random() * 9000)}`;
-
-      const newUser = {
-        id: uid,
-        email: email,
-        displayName: displayName || "Utilisateur Rynek",
-        photoURL: photoURL || "",
-        role: role || "client", // 'vendeur' si ça vient du formulaire vendeur, sinon 'client'
-        balance: 0,
-        referralCode: referralCode
-      };
-
-      // 💾 On insère le nouvel utilisateur dans la table
-      const { data: insertedUser, error: insertError } = await supabase
-        .from('users')
-        .insert([newUser]) 
-        .select()
-        .single();
-
-      if (insertError) throw insertError;
-
-      return res.status(201).json({ message: "Utilisateur créé avec succès", user: insertedUser });
+    if (existingUser) {
+      return res.status(200).json({ message: "Connexion réussie", user: existingUser });
     }
 
-    // 4. ✅ Si l'utilisateur existe déjà, on renvoie ses données (Login)
-    res.status(200).json({ message: "Connexion réussie", user: existingUser });
+    // 2. Créer le profil
+    const referralCode = `RY-${Math.random().toString(36).substring(2,8).toUpperCase()}`;
+
+    const newUser = {
+      id: uid,
+      email,
+      full_name: displayName || metadata?.full_name || "Utilisateur Rynek",
+      avatar_url: photoURL || metadata?.avatar_url || "",
+      role: role || "client",
+      referral_code: referralCode,
+      balance: 0,
+      total_sales: 0,
+      total_referrals: 0,
+      rank: "Bronze",
+      referral_earnings: 0,
+      total_clicks: 0,
+      is_admin: false,
+      shop_status: "pending",
+      is_banned: false,
+      terms_accepted: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    const { data: insertedUser, error: insertError } = await supabase
+    .from('profiles')
+    .insert([newUser])
+    .select()
+    .single();
+
+    if (insertError) {
+      console.error("🚨 INSERT profiles:", insertError);
+      return res.status(500).json({ error: "Erreur création profil", details: insertError.message });
+    }
+
+    return res.status(201).json({ message: "Utilisateur créé", user: insertedUser });
 
   } catch (error) {
-    console.error("Erreur Auth:", error.message);
-    res.status(500).json({ error: "Erreur serveur lors de la synchronisation" });
+    console.error("registerOrLogin:", error);
+    return res.status(500).json({ error: error.message });
   }
 };
+
+module.exports = { registerOrLogin };

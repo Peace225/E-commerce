@@ -1,11 +1,20 @@
 const express = require('express');
 const router = express.Router(); 
+
+// 1. Importations
 const orderController = require('../controllers/orderController');
+const authMiddlewareFile = require('../middlewares/authMiddleware'); 
 
-// ✅ ON CHANGE CETTE LIGNE : On pointe vers le bon fichier et on extrait la fonction 'protect'
-const { protect } = require('../middlewares/authMiddleware'); 
+// 2. 🔍 CAPTEURS DE SÉCURITÉ (Pour voir le coupable dans le terminal)
+console.log("🔍 Vérification des imports dans orderRoutes :");
+console.log("👉 orderController.createOrder :", typeof orderController.createOrder);
+console.log("👉 authMiddlewareFile (brut) :", typeof authMiddlewareFile);
 
-// 🛒 CRÉATION (Acheteur) - On ajoute 'protect' pour sécuriser la route
+// On essaie d'extraire 'protect', sinon on prend le middleware global si c'est un export par défaut
+const protect = authMiddlewareFile.protect || authMiddlewareFile;
+console.log("👉 protect (final) :", typeof protect);
+
+// 🛒 CRÉATION (Acheteur)
 router.post('/', protect, orderController.createOrder);
 
 // 📜 HISTORIQUE (Acheteur ou Vendeur)

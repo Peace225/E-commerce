@@ -81,7 +81,7 @@ export default function CategorySidebar({ categories, mode = "sidebar", isMobile
       <div className="bg-gradient-to-r from-blue-700 to-blue-600 text-white p-5 flex items-center gap-3 relative overflow-hidden rounded-t-2xl flex-shrink-0">
         <LayoutGrid size={20} className="relative z-10" />
         <h2 className="text-[13px] font-black uppercase tracking-[0.1em] relative z-10">
-          Rayons <span className="opacity-60 font-medium italic">Rynek</span>
+          Rayons <span className="opacity-60 font-medium italic">Life Shop</span>
         </h2>
         <div className="absolute -right-4 -top-4 w-16 h-16 bg-white/10 rounded-full" />
       </div>

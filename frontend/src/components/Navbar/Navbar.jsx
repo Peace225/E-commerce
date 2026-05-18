@@ -192,7 +192,7 @@ export default function Navbar() {
         <div className="container mx-auto px-4 lg:px-8 xl:px-12 flex items-center justify-between gap-4">
           
           <Link to="/" className="flex items-center gap-1 group flex-shrink-0">
-            <span className="text-xl md:text-2xl lg:text-3xl font-black tracking-tighter text-black group-hover:text-primary transition-colors uppercase italic">RYNEK</span>
+            <span className="text-xl md:text-2xl lg:text-3xl font-black tracking-tighter text-black group-hover:text-primary transition-colors uppercase italic">LIFE SHOP</span>
             <span className="bg-secondary text-white rounded-full w-4 h-4 lg:w-5 lg:h-5 flex items-center justify-center font-bold text-[8px] lg:text-[10px] transition-colors duration-500">★</span>
           </Link>
 
@@ -261,7 +261,7 @@ export default function Navbar() {
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 z-[200] backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)} />
             <motion.div initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }} className="fixed top-0 right-0 h-full w-[85%] max-w-sm bg-white z-[210] flex flex-col shadow-2xl">
               <div className="flex items-center justify-between p-5 border-b">
-                <span className="font-black text-xl italic uppercase tracking-tighter">RYNEK ★</span>
+                <span className="font-black text-xl italic uppercase tracking-tighter">LIFE SHOP ★</span>
                 <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 bg-gray-100 rounded-full"><X size={20}/></button>
               </div>
 

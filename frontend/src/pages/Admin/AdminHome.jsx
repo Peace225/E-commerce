@@ -126,7 +126,7 @@ export default function AdminHome() {
             Monitor <span className="text-red-600">Global</span>
           </h1>
           <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.3em] mt-1">
-            Système d'exploitation Rynek Pro v3.0
+            Système d'exploitation Life Shop v3.0
           </p>
         </div>
         <div className="hidden md:block bg-[#0f172a] px-6 py-3 rounded-2xl border border-white/5">
