@@ -6,6 +6,8 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion"; 
 import { supabase } from "../utils/supabaseClient"; // 🔄 Import du moteur Supabase
+
+// ⚠️ MODIFIEZ CETTE LIGNE SI VOTRE FICHIER EST EN MINUSCULE (ex: "./checkoutPopup")
 import CheckoutPopup from "./CheckoutPopup";
 
 // 👥 Données de Preuve Sociale (Gardées pour le design)
